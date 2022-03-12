@@ -3,9 +3,29 @@
   <el-container>
     <el-aside :width="isCollapseLeft ? '0px':'350px'" id = "asideLeft">
       <el-tabs v-model="activeName" @tab-click="handleClick">
-        <el-tab-pane label="Routes Analysis Panel" name="first">
+        <el-tab-pane label="RealTime Panel" name="first">
+          <div id="clockContainer">
+            <flip-clock/>
+          </div>
+          <el-form>
+            <el-form-item label="Time">
+              <el-date-picker v-model="realTimeDate"  type="date"  placeholder="Select Date">
+              </el-date-picker>
+            </el-form-item>
+            <el-form-item>
+              <el-button @click="startDisplayVehicles">start</el-button>
+              <el-button @click="stopDisplayVehicles">stop</el-button>
+            </el-form-item>
+            <el-form-item>
+              <!--TODO realTime set -->
+              <el-button class="btn" @click="clearRealTime">clearRealTime</el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+        <el-tab-pane label="Routes Analysis Panel" name="second">
           <el-form label-width="30px" :label-position="labelPosition" id="form">
             <el-form-item label="Time">
+<!--              TODO 设置默认的时间，如107，所有的显示按照这个日期来-->
               <el-date-picker v-model="timeSpan" type="daterange" start-placeholder = "Start" end-placeholder= "End" :default-time="['00:00:01','23:59:59']" ></el-date-picker>
               <el-button class="btn" @click="clearTimeSpan">clear</el-button>
               <el-button class="btn" @click="displayTripsByTimeSpan">SetTimeSpan</el-button>
@@ -57,20 +77,6 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
-        <el-tab-pane label="RealTime Panel" name="second">
-          <div id="clockContainer">
-            <flip-clock/>
-          </div>
-          <el-form>
-            <el-form-item label="Time">
-              <el-date-picker v-model="timeSpan" type="daterange" start-placeholder = "Start" end-placeholder= "End" :default-time="['00:00:01','23:59:59']" ></el-date-picker>
-              <el-button class="btn" @click="clearTimeSpan2">clear</el-button> <!--TODO realTime set timeSpan -->
-              <el-button class="btn" @click="displayTripsByTimeSpan2">SetTimeSpan</el-button>
-            </el-form-item>
-          </el-form>
-          <el-button @click="startDisplayVehicles">start</el-button>
-          <el-button @click="stopDisplayVehicles">stop</el-button>
-        </el-tab-pane>
       </el-tabs>
     </el-aside>
     <el-container>
@@ -82,7 +88,7 @@
               <div id="detailWindow" ref="detailWindow">
                 <div id="infoWindow">
                   <i id="closeButton" class="el-icon-close" @click="hiddenDetailWindow"></i>
-                  <BusSpeed_Chart v-bind:curVehicleInfo = "curVehicleInfo"></BusSpeed_Chart>
+                  <BusSpeed_Chart v-bind:cur-vehicle-info = "curVehicleInfo"  v-bind:cur-vehicle-speed-list="curVehicleSpeedList" ref="speedChart"></BusSpeed_Chart>
                 </div>
                 <div id="detailTail"></div>
               </div>
@@ -113,7 +119,7 @@
 import Vue from 'vue'
 import {mapStyle} from '../../public/map.js';
 import * as zrender from 'zrender';
-import FlipClock from 'kuan-vue-flip-clock'
+import FlipClock from 'kuan-vue-flip-clock';
 import {MP} from '../../public/map.js';
 import {CanvasLayer} from "../../public/CanvasLayer.js";
 import BusStay_Chart from "@/components/BusStay_Chart";
@@ -138,6 +144,13 @@ export default {
       routeIdOptions: [],
       tripIdOptions: [],
       visualVehicle: {},
+      visualVehicles: {
+        vehicleIds: [],
+        vehicleInfos: [],
+        bearings: [],
+        points: [],
+        speeds: [],
+      },
       mapv_bus_line_light_green: {
         strokeStyle: 'rgb(30,200,81,0.7)',
         shadowColor: 'rgb(32,57,31)',
@@ -192,6 +205,9 @@ export default {
       //TODO use the real time data
       curVehiclePoint: undefined,
       curVehicleInfo: undefined,
+      realTimeDate: '2022-01-01',
+      realTimeTime: '18:00:00',
+      curVehicleSpeedList:[],
     }
   },
   async mounted() {
@@ -275,7 +291,6 @@ export default {
           }
       )
 
-
       const navigation = new BMap.NavigationControl({ //init the navigation
         anchor: BMAP_ANCHOR_BOTTOM_RIGHT,
         type: BMAP_NAVIGATION_CONTROL_SMALL
@@ -285,11 +300,12 @@ export default {
       // _this.displayOriginTrips_mapv();  // mapv Layer
       await _this.displayOriginTrips_Canvas(); //canvas Layer
       // _this.timer = setInterval(this.displayAllVehicleIdByTime, 1000);
-      await _this.generateVisualVehicle();
+      // await _this.generateVisualVehicle();
+      await _this.updateVehicleData();
       _this.canvasLayerBusVehicle = new CanvasLayer({
         map: _this.map,
-        update: _this.updateCanvasBusVehicle,
-        zIndex: 5 //make sure the layer's index is high enough to trigger the mouse methods
+        update: _this.new_updateCanvasBusVehicle,
+        zIndex: 5 //make sure the layer's index is high encough to trigger the mouse methods
       });
     },
     /**
@@ -312,6 +328,7 @@ export default {
           _this.visualVehicle.vehicleInfos = []
           routes.forEach(route => {
             _this.trajectories.push(route.trajJsonModel);
+            //TODO the visualVehicle Need getFrom realTime
             _this.visualVehicle.vehicleInfos.push({routeId: route.routeId, agencyId: route.agencyId})
           });
           //CanvasLayer color to display the speed of points
@@ -348,29 +365,6 @@ export default {
       //   map: _this.map,
       //   update: _this.updateCanvasPointer
       // });
-    },
-    /**
-     * @description display origin trajectories of every Route
-     * by mapv
-     */
-    displayOriginTrips_mapv() {
-      let _this = this;
-      let routes = [];
-      _this.trajectories = [];
-      /**
-       * @get, url: /mapv/origin
-       * @dataType List<RoutesVo>
-       */
-      this.$axios.get('/mapv/origin').then(response => {
-        routes = response.data;
-        //Foreach route
-        routes.forEach(route => {
-          _this.trajectories.push(route.trajJsonModel);
-        });
-        _this.displayMapvLayer();
-      }).catch(error => {
-        console.log(error);
-      });
     },
     /**
      * @description triggered when set timespan, list and display by timespan
@@ -715,10 +709,163 @@ export default {
         _this.timer_is_on = false;
       }
     },
+    //TODO generateAllVehicleByTime
+    async showAllVehicleByTime() {
+        let _this = this;
+        // var lastVehicles = $.extend(true, {},_this.visualVehicles);
+        await _this.updateVehicleData();
+
+    },
+    new_updateCanvasBusVehicle() {
+      let that = this;
+      let _this = this.canvasLayerBusVehicle;
+      if (!_this.zr) {
+        _this.zr = zrender.init(_this.canvas);
+      } else {
+        _this.zr.clear();
+      }
+      _this.zr.resize(); //solve the offset caused by dragging or zooming the map
+      //data prepare Test
+      let points = that.visualVehicles.points;
+      let weights = that.visualVehicles.speeds;
+      let bearings = that.visualVehicles.bearings;
+      let infos = that.visualVehicles.vehicleInfos;
+      for (let k = 0; k < weights.length; k ++) {
+        const pixel = that.map.pointToPixel(points[k]);
+        var circle = new zrender.Circle({
+          shape: {
+            cx: pixel.x,
+            cy: pixel.y,
+            r: 10
+          },
+          style: {
+            fill: that.getVehicleColor(weights[k]),
+            stroke: '#faf9f9'//'#2e2d2d'
+          },
+          onclick: async function () {
+            that.curVehiclePoint = points[k];
+            that.curVehicleInfo = infos[k];
+            await that.curVehicleChartPrepare(k);
+            that.$refs.speedChart.updateVehicleData();
+            that.showDetailWindow();
+            that.setDetailWindowPosition();
+          }
+        });
+        _this.zr.add(circle);
+        // Render arrows according to render pixel distance
+        // Pointer length
+        const pointerLong = 8;
+        const res = that.new_generateBusVehiclePointer(pointerLong, pixel, bearings[k], 45);
+        const aPixel = res.aPixel; //set arrow point
+        const bPixel = res.bPixel;
+        const midPixel = res.midPixel;
+        var line1 = new zrender.Polyline({
+          shape: {
+            points: [
+              [aPixel.x, aPixel.y],
+              [midPixel.x, midPixel.y],
+              [bPixel.x, bPixel.y],
+            ]
+          },
+          style: {
+            stroke: '#000000',
+            lineWidth: 2,
+          }
+        });
+        _this.zr.add(line1);
+      }
+    },
+    async curVehicleChartPrepare(k) {
+      let _this = this;
+      let vehicleId = _this.visualVehicles.vehicleIds[k];
+      _this.curVehicleInfo = _this.visualVehicles.vehicleInfos[k];
+      await _this.$axios.get("/realTime/speed/?vehicleId=" + vehicleId + "&curTime=" + _this.realTimeDate + " " + _this.realTimeTime).then((response) => {
+        if (response && response.status) { //last seven days
+          _this.curVehicleSpeedList = response.data;
+        }
+      });
+    },
+    new_generateBusVehiclePointer(lineLong, pixel, bearing, theta) {
+      const aPixel = {};
+      const bPixel = {};
+      const midPixel = {};
+      let angle = bearing;
+      let angle1 = (angle + theta) * Math.PI / 180;
+      let angle2 = (angle - theta) * Math.PI / 180
+      midPixel.x = pixel.x - Math.cos(angle * Math.PI / 180)*lineLong/2;
+      midPixel.y = pixel.y - Math.sin(angle * Math.PI / 180)*lineLong/2;
+      aPixel.x = Math.cos(angle1)*lineLong + midPixel.x;
+      aPixel.y = Math.sin(angle1)*lineLong + midPixel.y;
+      bPixel.x = Math.cos(angle2)*lineLong + midPixel.x;
+      bPixel.y = Math.sin(angle2)*lineLong + midPixel.y;
+      return {aPixel, bPixel, midPixel};
+    },
+    async updateVehicleData() {
+      let _this = this;
+      var curTime = _this.realTimeDate + ' ' + _this.realTimeTime;
+      await _this.$axios.get('/realTime/?curTime=' + _this.realTimeDate + ' ' + _this.realTimeTime).then((response) => {
+        if(response && response.status) {
+          var tempVehicleList = response.data;
+          tempVehicleList.forEach((tempVehicle) => {
+            if(_this.visualVehicles.vehicleIds.indexOf(tempVehicle.vehicleId) == -1) { //not exist
+              _this.visualVehicles.vehicleIds.push(tempVehicle.vehicleId);
+              _this.visualVehicles.speeds.push(0);
+              _this.visualVehicles.points.push(new BMap.Point(tempVehicle.lon, tempVehicle.lat));
+              _this.visualVehicles.bearings.push(tempVehicle.bearing);
+              _this.visualVehicles.vehicleInfos.push({routeId: tempVehicle.routeId, agencyId: tempVehicle.agencyId,
+                nextStop: tempVehicle.nextStop, speed: 0, recordedTime: tempVehicle.recordedTime, vehicleId: tempVehicle.vehicleId});
+            } else {
+              let curVIdx = _this.visualVehicles.vehicleIds.indexOf(tempVehicle.vehicleId);
+              var lastPoint = _this.visualVehicles.points[curVIdx];
+              var lastTime = _this.visualVehicles.vehicleInfos[curVIdx].recordedTime;
+              var newPoint = new BMap.Point(tempVehicle.lon, tempVehicle.lat);
+              var newSpeed = _this.calSpeed(tempVehicle.recordedTime, newPoint, lastTime, lastPoint);
+              _this.visualVehicles.points[curVIdx] = newPoint;
+              _this.visualVehicles.bearings[curVIdx] = tempVehicle.bearing;
+              _this.visualVehicles.speeds[curVIdx] = newSpeed;
+              _this.visualVehicles.vehicleInfos[curVIdx] = {routeId: tempVehicle.routeId, agencyId: tempVehicle.agencyId,
+                nextStop: tempVehicle.nextStop, speed: newSpeed, recordedTime: tempVehicle.recordedTime, vehicleId: tempVehicle.vehicleId}
+            }
+          });
+        }
+      });
+    },
+    calSpeed(curTime, curPoint, lastTime, lastPoint) {
+      if(curTime == lastTime)  return 0;
+      else {
+        let dist = this.calDistance(curPoint, lastPoint);
+        let speed = dist / (lastTime - curTime); // m/s
+        return Math.round(speed * 3.6); //km/h
+      }
+    }
+    ,
+    calDistance(curPoint, lastPoint) {
+      /** 计算两经纬度之间的距离，单位是m
+       * approx distance between two points on earth ellipsoid
+       */
+      function getGreatCircleDistance(lat1,lng1,lat2,lng2){
+        const PI = Math.PI;
+        const EARTH_RADIUS = 6378.137; //km
+        function getRad (d) {
+          return d * PI / 180.0;
+        }
+        var radLat1 = getRad(lat1);
+        var radLat2 = getRad(lat2);
+        var a = radLat1 - radLat2;
+        var b = getRad(lng1) - getRad(lng2);
+        var s = 2*Math.asin(Math.sqrt(Math.pow(Math.sin(a/2),2) + Math.cos(radLat1)*Math.cos(radLat2)*Math.pow(Math.sin(b/2),2)));
+        s = s*EARTH_RADIUS;
+        s = Math.round(s*10000)/10000.0;
+        return s*1000; //m
+      }
+      let result = getGreatCircleDistance(curPoint.lat, curPoint.lng, lastPoint.lat, lastPoint.lng);
+      return result;
+    },
     /**
      * @description display all the vehicle by real time
      * @returns {Promise<void>}
      */
+    //TODO modify the method
     async displayAllVehicleIdByTime() {
       let _this = this;
       var realTimeData;
@@ -776,7 +923,6 @@ export default {
       // this.clearAll()
       // this.displayOriginTrips_mapv()
       // this.timer = setInterval(this.displayAllVehicleIdByTime, 1000)
-
       let _this = this;
       //TODO test
       var curPoint = new BMap.Point(-73.88601, 40.880624);
@@ -1165,7 +1311,7 @@ export default {
   position: relative;
   overflow:hidden;
 }
-#form  .el-form-item__label{
+.el-form-item__label{
   font-weight: bold;
 }
 .btn {
@@ -1300,3 +1446,7 @@ img[src="http://api.map.baidu.com/images/iw3.png"]{
 }
 .anchorBL{display:none;}
 </style>
+
+
+
+

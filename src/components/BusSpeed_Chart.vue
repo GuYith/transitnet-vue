@@ -1,9 +1,10 @@
 <template>
   <div style="width: 350px">
     <el-descriptions title="VehicleInfo" :column = "1" class="Vehicle-des">
-      <el-descriptions-item label="VehicleId">testVehicleId-{{curVehicleInfo.routeId}}</el-descriptions-item>
+      <el-descriptions-item label="VehicleId">{{curVehicleInfo.vehicleId}}</el-descriptions-item>
       <el-descriptions-item label="routeId">{{curVehicleInfo.routeId}}</el-descriptions-item>
-      <el-descriptions-item label="speed">20 km/h</el-descriptions-item>
+      <el-descriptions-item label="nextStop">{{curVehicleInfo.nextStop}}</el-descriptions-item>
+      <el-descriptions-item label="speed">{{ curVehicleInfo.speed }} km/h</el-descriptions-item>
     </el-descriptions>
     <div style="width: 350px; height: 100px" ref="busSpeed"></div>
   </div>
@@ -35,23 +36,31 @@ export default {
       // curVehicleInfo: {
       //   routeId: 0
       // }
+      busSpeedChart: {}
     }
   },
   props: {
     curVehicleInfo: {
       type: Object,
       default: () => ({
-        routeId: 0
+        routeId: "default",
+        angencyId: "default",
+        nexStop: "default",
+        speed: 0,
+        recordedTime: "default",
+        vehicleId: "default"
       })
-    }
+    },
+    curVehicleSpeedList:[]
   },
   mounted() {
     this.init()
   },
   methods: {
     init() {
-      var myChart = echarts.init(this.$refs.busSpeed);
-      myChart.resize();
+      var _this = this;
+      _this.busSpeedChart = echarts.init(this.$refs.busSpeed);
+      _this.busSpeedChart.resize();
       var option;
 
 // prettier-ignore
@@ -83,11 +92,13 @@ export default {
         '23:00','23:15', '23:30', '23:45',
       ];
 // prettier-ignore
+      //TODO  dynamic days from database
       const days = [
         '1-01', '1-02', '1-03',
         '1-04', '1-05', '1-06', '1-07'
       ];
 // prettier-ignore
+      //x(hour) y(day) speed(s)
       const data = [
         [0, 0, 3], [0, 1, 1], [0, 2, 0], [0, 3, 10], [0, 4, 10], [0, 5, 2], [0, 6, 1], [0, 7, 9], [0, 8, 0], [0, 9, 8], [0, 10, 0], [0, 11, 6], [0, 12, 0], [0, 13, 0], [0, 14, 4], [0, 15, 4], [0, 16, 10], [0, 17, 6], [0, 18, 10], [0, 19, 8], [0, 20, 0], [0, 21, 1], [0, 22, 9], [0, 23, 7], [0, 24, 7], [0, 25, 10], [0, 26, 6], [0, 27, 4], [0, 28, 1], [0, 29, 2], [0, 30, 2], [0, 31, 0], [0, 32, 4], [0, 33, 1], [0, 34, 10], [0, 35, 4], [0, 36, 7], [0, 37, 2], [0, 38, 4], [0, 39, 9], [0, 40, 3], [0, 41, 9], [0, 42, 1], [0, 43, 0], [0, 44, 2], [0, 45, 9], [0, 46, 5], [0, 47, 3], [0, 48, 10], [0, 49, 7], [0, 50, 7], [0, 51, 4], [0, 52, 2], [0, 53, 9], [0, 54, 2], [0, 55, 9], [0, 56, 9], [0, 57, 7], [0, 58, 0], [0, 59, 4], [0, 60, 1], [0, 61, 10], [0, 62, 2], [0, 63, 6], [0, 64, 7], [0, 65, 5], [0, 66, 9], [0, 67, 0], [0, 68, 2], [0, 69, 5], [0, 70, 0], [0, 71, 0], [0, 72, 7], [0, 73, 9], [0, 74, 8], [0, 75, 7], [0, 76, 10], [0, 77, 8], [0, 78, 0], [0, 79, 8], [0, 80, 2], [0, 81, 0], [0, 82, 0], [0, 83, 8], [0, 84, 0], [0, 85, 2], [0, 86, 9], [0, 87, 10], [0, 88, 8], [0, 89, 1], [0, 90, 3], [0, 91, 10], [0, 92, 9], [0, 93, 10], [0, 94, 6], [0, 95, 3],
         [1, 0, 1], [1, 1, 1], [1, 2, 7], [1, 3, 8], [1, 4, 5], [1, 5, 0], [1, 6, 3], [1, 7, 10], [1, 8, 4], [1, 9, 6], [1, 10, 10], [1, 11, 2], [1, 12, 3], [1, 13, 4], [1, 14, 5], [1, 15, 4], [1, 16, 1], [1, 17, 7], [1, 18, 9], [1, 19, 8], [1, 20, 2], [1, 21, 1], [1, 22, 7], [1, 23, 7], [1, 24, 6], [1, 25, 0], [1, 26, 10], [1, 27, 0], [1, 28, 0], [1, 29, 3], [1, 30, 7], [1, 31, 9], [1, 32, 7], [1, 33, 3], [1, 34, 8], [1, 35, 6], [1, 36, 2], [1, 37, 3], [1, 38, 10], [1, 39, 0], [1, 40, 10], [1, 41, 7], [1, 42, 2], [1, 43, 10], [1, 44, 8], [1, 45, 6], [1, 46, 5], [1, 47, 10], [1, 48, 7], [1, 49, 1], [1, 50, 8], [1, 51, 6], [1, 52, 10], [1, 53, 3], [1, 54, 0], [1, 55, 4], [1, 56, 8], [1, 57, 9], [1, 58, 8], [1, 59, 0], [1, 60, 10], [1, 61, 4], [1, 62, 9], [1, 63, 8], [1, 64, 4], [1, 65, 0], [1, 66, 7], [1, 67, 9], [1, 68, 8], [1, 69, 0], [1, 70, 9], [1, 71, 9], [1, 72, 5], [1, 73, 5], [1, 74, 5], [1, 75, 8], [1, 76, 6], [1, 77, 1], [1, 78, 8], [1, 79, 0], [1, 80, 6], [1, 81, 6], [1, 82, 6], [1, 83, 4], [1, 84, 9], [1, 85, 2], [1, 86, 3], [1, 87, 1], [1, 88, 4], [1, 89, 5], [1, 90, 8], [1, 91, 9], [1, 92, 6], [1, 93, 4], [1, 94, 1], [1, 95, 3],
@@ -107,7 +118,8 @@ export default {
           }
         },
         tooltip: {
-          position: 'top'
+          position: 'top',
+
         },
         toolbox: {
           feature: {
@@ -136,14 +148,16 @@ export default {
         },
         visualMap: {
           min: 0,
-          max: 10,
+          max: 80,
           calculable: true,
           orient: 'vertical',
           itemWidth: '10',
           itemHeight:"50%",
+          // inRange: {
+          //   color: ['#ff4b4b', '#ffb218','#079b40'] // 渐变颜色
+          // },
           right: '0',
           top: '0%',
-          
         },
         series: [
           {
@@ -162,7 +176,29 @@ export default {
           }
         ]
       };
-      option && myChart.setOption(option);
+      option && _this.busSpeedChart.setOption(option);
+    },
+    updateVehicleData() {
+      let _this = this;
+      var days = [];
+      var speedLists = [];
+      var speedData = []
+      for(let i = 0; i < _this.curVehicleSpeedList.length; i++) {
+        days.push(_this.curVehicleSpeedList[i].date);
+        speedLists.push(_this.curVehicleSpeedList[i].speedList);
+      }
+      var option = _this.busSpeedChart.getOption();
+      option.yAxis[0].data = days;
+      for(let i = 0; i < _this.curVehicleSpeedList.length; i ++) {
+        let speedList = speedLists[i];
+        var curData = [];
+        for(let j = 0; j < speedList.length; j ++) {
+            curData.push([j,i,speedList[j].toFixed(2)]);
+        }
+        speedData = speedData.concat(curData);
+      }
+      option.series[0].data = speedData;
+      _this.busSpeedChart.setOption(option);
     }
   }
 }

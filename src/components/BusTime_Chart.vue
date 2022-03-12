@@ -19,87 +19,227 @@ echarts.use([RadarChart]);
 echarts.use([LineChart]);
 export default {
   name: "BusTime_Chart",
-  data() {return {chart: null}},
+  data() {
+    return {
+      arrivalTime: [],
+      allCountList: [],
+      lateCountList: [],
+      ratioList: [],
+      curDate: "2022-01-01",
+      chart: null,
+      maxCount: 15000,
+    }
+  },
   mounted() {
     this.init()
   },
   methods: {
     init() {
+      let _this = this;
       var chartDom = document.getElementById('busTime');
-      var myChart = echarts.init(chartDom);
+      var BusTime_Chart = echarts.init(chartDom);
       var option;
-
-// prettier-ignore
-      const hours = [
-        '12a', '1a', '2a', '3a', '4a', '5a', '6a',
-        '7a', '8a', '9a', '10a', '11a',
-        '12p', '1p', '2p', '3p', '4p', '5p',
-        '6p', '7p', '8p', '9p', '10p', '11p'
-      ];
-// prettier-ignore
-      const minutes = [
-          5,10,15,20,25,30
-      ]
-// prettier-ignore
-      const data = [{
-        value: [10,20,23,30,15,20,23,30,18,15,20,13,23,23,32,11,22,12,23,18]
-          }, {
-          value: [23,30,18,15,20,13,23,23,32,11,22,12,23,18,10,20,23,30,15,20]
-        }, {
-            value: [23,23,32,11,22,12,23,18,10,20,23,30,15,20,23,30,18,15,20,13]
-          }
-      ]
-      ;
-      option = {
-        title: {
-          text: 'Bus Arrival',
-          left: 'center',
-          top: 10
-        },
-        grid: [
-          {top: '30'},
-        ],
-        // legend: {
-        //   data: ['BusTime Chart'],
-        //   left: 'center'
-        // },
-        toolbox: {
-          feature: {
-            saveAsImage: {}
-          }
-        },
-        radar: {
-          indicator: [
-            { name:'12a', max: 35}, { name:'1a', max:35}, { name:'2a', max:35},
-            { name:'3a', max:35},{ name:'4a', max:35},{ name:'5a', max:35},
-            { name:'6a', max:35},{ name:'7a', max:35},{ name:'8a', max:35},
-            { name:'9a', max:35},{ name:'10a', max:35},{ name:'11a', max:35},
-            { name:'12p', max:35},{ name:'1p', max:35},{ name:'2p', max:35},
-            { name:'3p', max:35},{ name:'4p', max:35},{ name:'5p', max:35},
-            { name:'6p', max:35},{ name:'7p', max:35},{ name:'8p', max:35},
-            { name:'9p', max:35},{ name:'10p', max:35},{ name:'11p', max:35},
-          ]
-        },
-        series: [
+      BusTime_Chart.showLoading();
+      this.$axios.get('/visual/arrivalTime?date=' + _this.curDate).then(response => {
+        _this.arrivalTime = response.data;
+        _this.allCount = [];
+        _this.lateCount = [];
+        //get data List
+        for(var ai = 0; ai < _this.arrivalTime.length; ai ++) {
+          _this.allCountList.push(parseInt(_this.arrivalTime[ai].allCount));
+          _this.lateCountList.push(parseInt(_this.arrivalTime[ai].lateCount));
+          _this.ratioList.push(parseInt(_this.arrivalTime[ai].lateCount) / parseInt(_this.arrivalTime[ai].allCount) * _this.maxCount)
+        }
+        let sourceData = [
           {
-            name: 'BusTime_Chart',
-            type: 'radar',
-            // coordinateSystem: 'polar',
-            symbolSize: 2,
-            itemStyle: {
-              normal: {
-                color: 'rgba(222,105,105,0.3)'
-              }
-            },
-            areaStyle: {},
-            data: data,
-            animationDelay: function (idx) {
-              return idx * 5;
-            }
+            value : _this.allCountList,
+            name: 'All Stop Count',
+            areaStyle: {color: 'rgba(162,208,201,0.3)'},
+            lineStyle: {color: 'rgb(79,109,117)'}
+          },
+          {
+            value : _this.lateCountList,
+            name: 'Late Stop Count',
+            areaStyle: {color: 'rgba(222,105,105,0.3)'},
+            lineStyle: {color: 'rgba(117,59,59,0.8)'}
+          },
+          {
+            value : _this.ratioList,
+            name: 'Late Ratio',
+            areaStyle: {color: 'transparent'},
+            lineStyle: { color: 'rgb(196,107,32)'}
           }
+        ];
+        const times = [
+          '00:00', '00:15', '00:30', '00:45',
+          '01:00', '01:15', '01:30', '01:45',
+          '02:00', '02:15', '02:30', '02:45',
+          '03:00', '03:15', '03:30', '03:45',
+          '04:00', '04:15', '04:30', '04:45',
+          '05:00', '05:15', '05:30', '05:45',
+          '06:00', '06:15', '06:30', '06:45',
+          '07:00', '07:15', '07:30', '07:45',
+          '08:00', '08:15', '08:30', '08:45',
+          '09:00', '09:15', '09:30', '09:45',
+          '10:00', '10:15', '10:30', '10:45',
+          '11:00', '11:15', '11:30', '11:45',
+          '12:00', '12:15', '12:30', '12:45',
+          '13:00', '13:15', '13:30', '13:45',
+          '14:00', '14:15', '14:30', '14:45',
+          '15:00', '15:15', '15:30', '15:45',
+          '16:00', '16:15', '16:30', '16:45',
+          '17:00', '17:15', '17:30', '17:45',
+          '18:00', '18:15', '18:30', '18:45',
+          '19:00', '19:15', '19:30', '19:45',
+          '20:00', '20:15', '20:30', '20:45',
+          '21:00', '21:15', '21:30', '21:45',
+          '22:00', '22:15', '22:30', '22:45',
+          '23:00','23:15', '23:30', '23:45',
+        ];
+        let indicator = [
+          { name: '00:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '01:00', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '02:00', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '03:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '04:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '05:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '06:00', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '07:00', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '08:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '09:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '10:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '11:00', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '12:00', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '13:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '14:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '15:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name:'', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '16:00', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '17:00', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '18:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '19:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '20:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '21:00', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '22:00', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '23:00', max: _this.maxCount}, { name: '', max: _this.maxCount}, { name: '', max: _this.maxCount},
+          { name: '', max: _this.maxCount},
         ]
-      };
-      option && myChart.setOption(option);
+        indicator && indicator.reverse()
+        for(var di = 0; di < sourceData.length; di ++) {
+          sourceData[di].value && sourceData[di].value.reverse()
+        }
+
+        const buildAllSeries = function (sDs) {
+          let results = [];
+          results = results.concat(buildSeries(sDs, 0));
+          // console.log(results);
+          results = results.concat(buildSeries(sDs, 1));
+          // console.log(results);
+          results = results.concat(buildSeries(sDs, 2));
+          // console.log(results);
+          return results ;
+        };
+        const buildSeries = function(sDs, si){
+          let sD = sDs[si];
+          let data = sD.value;
+          const helper = data.map((item, index) => {
+            const arr = new Array(data.length);
+            arr.splice(index, 1, item);
+            return arr;
+          })
+          return [data, ...helper].map((item, index) => {
+            return {
+              type: 'radar',
+              symbol: index === 0 ? 'circle' : 'none',
+              symbolSize: 2,
+              lineStyle: index === 0 ? sD.lineStyle : {color: 'transparent'},
+              areaStyle: sD.areaStyle,
+              tooltip: {
+                show: index === 0 ? false : true,
+                formatter: function() {
+                  return  "<b>" + _this.curDate+ " " +  times[index - 1] + '</b>: <br/>'
+                      + "All Stop Count: " +  sDs[0].value[index - 1] + ' <br/>'
+                      + "Late Stop Count: " + sDs[1].value[index - 1] + ' <br/>'
+                      + "Late Ratio: " + Math.floor(sDs[1].value[index - 1] / sDs[0].value[index - 1]*10000)/100 + "%";
+                }
+              },
+              z: index === 0 ? 1 : 2,
+              data: [
+                  {
+                    value: item,
+                    name: sD.name
+                  }
+              ]
+            }
+          })
+        }
+
+        option = {
+          color: ['rgb(79,109,117)', 'rgba(117,59,59,0.8)', 'rgb(196,107,32)'],
+          title: {
+            text: 'Bus Arrival',
+            left: 'center',
+            top: 10
+          },
+          legend: {
+            data: [
+                'All Stop Count',
+                'Late Stop Count',
+                'Late Ratio'
+            ],
+            bottom: 0,
+          },
+          tooltip: {},
+          grid: [
+            {top: '30'},
+          ],
+          // legend: {
+          //   data: ['BusTime Chart'],
+          //   left: 'center'
+          // },
+          toolbox: {
+            feature: {
+              saveAsImage: {}
+            }
+          },
+          radar: {
+            label: {
+              show: true,
+            },
+            startAngle: 90,
+            indicator: indicator,
+            triggerEvent: true
+          },
+          series: buildAllSeries(sourceData)
+        //   series: [
+        //     {
+        //       name: 'BusTime_Chart',
+        //       type: 'radar',
+        //       // coordinateSystem: 'polar',
+        //       symbolSize: 2,
+        //       data: [data[0]],
+        //       tooltip: {
+        //         trigger: 'item',
+        //         show: true,
+        //         formatter: function(params) {
+        //           console.log(params);
+        //           return times[0];
+        //         }
+        //       },
+        //     },
+        //     {
+        //       type: 'radar',
+        //       // coordinateSystem: 'polar',
+        //       symbolSize: 2,
+        //       data: [data[1]],
+        //     },
+        //     {
+        //       type: 'radar',
+        //       // coordinateSystem: 'polar',
+        //       symbolSize: 2,
+        //       data: [data[2]],
+        //     }
+        //   ]
+        };
+        BusTime_Chart.hideLoading();
+        option && BusTime_Chart.setOption(option);
+      }).catch(error => {
+        console.log(error);
+      });
     }
   }
 }
