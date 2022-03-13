@@ -1,12 +1,12 @@
 <template>
-  <div style="width: 350px">
-    <el-descriptions title="VehicleInfo" :column = "1" class="Vehicle-des">
-      <el-descriptions-item label="VehicleId">{{curVehicleInfo.vehicleId}}</el-descriptions-item>
-      <el-descriptions-item label="routeId">{{curVehicleInfo.routeId}}</el-descriptions-item>
-      <el-descriptions-item label="nextStop">{{curVehicleInfo.nextStop}}</el-descriptions-item>
-      <el-descriptions-item label="speed">{{ curVehicleInfo.speed }} km/h</el-descriptions-item>
+  <div style="width: 370px">
+    <el-descriptions :title="`${curVehicle.curVehicleInfo.vehicleId}`" :column = "2" class="Vehicle-des">
+      <el-descriptions-item label="RouteId">{{curVehicle.curVehicleInfo.routeId}}</el-descriptions-item>
+      <el-descriptions-item label="AgencyId">{{curVehicle.curVehicleInfo.agencyId}}</el-descriptions-item>
+      <el-descriptions-item label="nextStop">{{curVehicle.curVehicleInfo.nextStop}}</el-descriptions-item>
+      <el-descriptions-item label="speed">{{ curVehicle.curVehicleInfo.speed }} km/h</el-descriptions-item>
     </el-descriptions>
-    <div style="width: 350px; height: 100px" ref="busSpeed"></div>
+    <div style="width: 370px; height: 100px" ref="busSpeed"></div>
   </div>
 <!--TODO compare oneRoute different time-->
 </template>
@@ -36,36 +36,8 @@ export default {
       // curVehicleInfo: {
       //   routeId: 0
       // }
-      busSpeedChart: {}
-    }
-  },
-  props: {
-    curVehicleInfo: {
-      type: Object,
-      default: () => ({
-        routeId: "default",
-        angencyId: "default",
-        nexStop: "default",
-        speed: 0,
-        recordedTime: "default",
-        vehicleId: "default"
-      })
-    },
-    curVehicleSpeedList:[]
-  },
-  mounted() {
-    this.init()
-  },
-  methods: {
-    init() {
-      var _this = this;
-      _this.busSpeedChart = echarts.init(this.$refs.busSpeed);
-      _this.busSpeedChart.resize();
-      var option;
-
-// prettier-ignore
-      //12*4
-      const hours = [
+      busSpeedChart: {},
+      hours: [
         '00:00', '00:15', '00:30', '00:45',
         '01:00', '01:15', '01:30', '01:45',
         '02:00', '02:15', '02:30', '02:45',
@@ -90,13 +62,34 @@ export default {
         '21:00', '21:15', '21:30', '21:45',
         '22:00', '22:15', '22:30', '22:45',
         '23:00','23:15', '23:30', '23:45',
-      ];
-// prettier-ignore
-      //TODO  dynamic days from database
-      const days = [
-        '1-01', '1-02', '1-03',
-        '1-04', '1-05', '1-06', '1-07'
-      ];
+      ],
+      days:[
+        '01-01', '01-02', '01-03',
+        '01-04', '01-05', '01-06', '01-07'
+      ]
+    }
+  },
+  props: {
+    curVehicle:{
+      curVehicleInfo: {
+        vehicleId: "",
+        routeId: "",
+        agencyId: "",
+        nextStop: "",
+        speed: 0.0
+      },
+      curVehicleSpeedList: [],
+    }
+  },
+  mounted() {
+    this.init()
+  },
+  methods: {
+    init() {
+      let _this = this;
+      _this.busSpeedChart = echarts.init(this.$refs.busSpeed);
+      _this.busSpeedChart.resize();
+      let option;
 // prettier-ignore
       //x(hour) y(day) speed(s)
       const data = [
@@ -119,7 +112,11 @@ export default {
         },
         tooltip: {
           position: 'top',
-
+          formatter: function (item) {
+            var res = item.marker + "<b> "+ item.data[2] + "km/h" + "</b></br>" +_this.days[item.data[1]] + " " + _this.hours[item.data[0]]
+                ;
+            return res;
+          }
         },
         toolbox: {
           feature: {
@@ -130,32 +127,35 @@ export default {
         grid: {
           height: '40%',
           top: '30',
+          left: '13%',
+          width: '80%'
           // left: '20%'
         },
         xAxis: {
           type: 'category',
-          data: hours,
+          data: _this.hours,
           splitArea: {
             show: true
           }
         },
         yAxis: {
           type: 'category',
-          data: days,
+          data: _this.days,
           splitArea: {
             show: true,
           }
         },
         visualMap: {
           min: 0,
-          max: 80,
+          max: 60,
           calculable: true,
           orient: 'vertical',
           itemWidth: '10',
           itemHeight:"50%",
-          // inRange: {
-          //   color: ['#ff4b4b', '#ffb218','#079b40'] // 渐变颜色
-          // },
+          inRange: {
+            // color: ["#ff8c35", "#f9d382"] // 渐变颜色;
+            color: ["#d6f9cf", "#0c9500"]
+          },
           right: '0',
           top: '0%',
         },
@@ -178,22 +178,25 @@ export default {
       };
       option && _this.busSpeedChart.setOption(option);
     },
-    updateVehicleData() {
+    updateSpeedChartVehicleData() {
       let _this = this;
       var days = [];
       var speedLists = [];
       var speedData = []
-      for(let i = 0; i < _this.curVehicleSpeedList.length; i++) {
-        days.push(_this.curVehicleSpeedList[i].date);
-        speedLists.push(_this.curVehicleSpeedList[i].speedList);
+      for(let i = 0; i < _this.curVehicle.curVehicleSpeedList.length; i++) {
+        days.push(_this.curVehicle.curVehicleSpeedList[i].date);
+        speedLists.push(_this.curVehicle.curVehicleSpeedList[i].speedList);
       }
       var option = _this.busSpeedChart.getOption();
       option.yAxis[0].data = days;
-      for(let i = 0; i < _this.curVehicleSpeedList.length; i ++) {
+      _this.days = days;
+      for(let i = 0; i < _this.curVehicle.curVehicleSpeedList.length; i ++) {
         let speedList = speedLists[i];
         var curData = [];
         for(let j = 0; j < speedList.length; j ++) {
-            curData.push([j,i,speedList[j].toFixed(2)]);
+          if(speedList[j] == 0)
+            curData.push([j, i, null]);
+          else curData.push([j,i,speedList[j].toFixed(2)]);
         }
         speedData = speedData.concat(curData);
       }

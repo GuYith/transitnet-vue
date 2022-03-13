@@ -4,21 +4,19 @@
     <el-aside :width="isCollapseLeft ? '0px':'350px'" id = "asideLeft">
       <el-tabs v-model="activeName" @tab-click="handleClick">
         <el-tab-pane label="RealTime Panel" name="first">
-          <div id="clockContainer">
-            <flip-clock/>
-          </div>
           <el-form>
-            <el-form-item label="Time">
+            <el-form-item label="Date">
               <el-date-picker v-model="realTimeDate"  type="date"  placeholder="Select Date">
               </el-date-picker>
             </el-form-item>
+            <el-form-item label="Time"> Real-time bus data will update over time </el-form-item>
+            <div id="clockContainer">
+              <flip-clock/>
+            </div>
             <el-form-item>
               <el-button @click="startDisplayVehicles">start</el-button>
               <el-button @click="stopDisplayVehicles">stop</el-button>
-            </el-form-item>
-            <el-form-item>
-              <!--TODO realTime set -->
-              <el-button class="btn" @click="clearRealTime">clearRealTime</el-button>
+              <el-button @click="clearDisplayVehicles">clear</el-button>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -28,7 +26,8 @@
 <!--              TODO 设置默认的时间，如107，所有的显示按照这个日期来-->
               <el-date-picker v-model="timeSpan" type="daterange" start-placeholder = "Start" end-placeholder= "End" :default-time="['00:00:01','23:59:59']" ></el-date-picker>
               <el-button class="btn" @click="clearTimeSpan">clear</el-button>
-              <el-button class="btn" @click="displayTripsByTimeSpan">SetTimeSpan</el-button>
+              <el-button class="btn" @click="setTimeSpan">SetTimeSpan</el-button>
+<!--              TODO 按钮的方法和显示的label需要修改，应该改为showAll-->
               <el-button class="btn" @click="displayOriginTrips_Canvas">Origin</el-button>
             </el-form-item>
             <el-form-item label="RouteId">
@@ -53,7 +52,6 @@
             </el-form-item>
             <el-form-item>
               <el-button @click="showOneTrajectory">Select</el-button>
-              <el-button>Deselect</el-button>
             </el-form-item>
             <el-form-item id="lastItem">
               <el-table :data="stopData" height="350">
@@ -84,11 +82,12 @@
         <el-main>
           <el-button class="toggleButton" @click="toggleCollapseLeft" :icon="isCollapseLeft ? 'el-icon-d-arrow-right' : 'el-icon-d-arrow-left'"> </el-button>
           <div id="map_container">
+            <div id="legend" ref="mapLegend"></div>
             <div id="baiduMap" ></div>
               <div id="detailWindow" ref="detailWindow">
                 <div id="infoWindow">
                   <i id="closeButton" class="el-icon-close" @click="hiddenDetailWindow"></i>
-                  <BusSpeed_Chart v-bind:cur-vehicle-info = "curVehicleInfo"  v-bind:cur-vehicle-speed-list="curVehicleSpeedList" ref="speedChart"></BusSpeed_Chart>
+                  <BusSpeed_Chart v-bind:cur-vehicle = "curVehicle" ref="speedChart"></BusSpeed_Chart>
                 </div>
                 <div id="detailTail"></div>
               </div>
@@ -116,7 +115,6 @@
 
 <script>
 /* eslint-disable */
-import Vue from 'vue'
 import {mapStyle} from '../../public/map.js';
 import * as zrender from 'zrender';
 import FlipClock from 'kuan-vue-flip-clock';
@@ -132,18 +130,17 @@ export default {
     return {
       ak: 'wS6oFNUtxQkjV7NsMd5iyNn2ydw2XlmE',
       activeName: 'first',
-      trajectories: [],
+      trajData: {
+        trajectories: [],
+        weights: [],
+        totalPoints: []
+      },
       map: {},
-      busMk: {},
-      vehicleList: [],
-      MapMkList: [],
       timeSpan: [],
       stopData: [],
-      timesData: [],
       labelPosition: 'top',
       routeIdOptions: [],
       tripIdOptions: [],
-      visualVehicle: {},
       visualVehicles: {
         vehicleIds: [],
         vehicleInfos: [],
@@ -151,76 +148,133 @@ export default {
         points: [],
         speeds: [],
       },
-      mapv_bus_line_light_green: {
-        strokeStyle: 'rgb(30,200,81,0.7)',
-        shadowColor: 'rgb(32,57,31)',
-        shadowBlur: 3,
-        lineWidth: 3.0,
-        draw: 'simple',
-      },
-      mapv_option_stop: {
-        fillStyle: 'rgba(255, 250, 250, 1)',
-        size: 3,
-        label: {
-          show: true
+      mapVOptions: {
+        mapv_bus_line_light_green: {
+          strokeStyle: 'rgb(30,200,81,0.7)',
+          shadowColor: 'rgb(32,57,31)',
+          shadowBlur: 3,
+          lineWidth: 5.0,
+          draw: 'simple',
         },
-        draw: 'simple',
-      },
-      mapv_option_dot_animation: {
-        zIndex: 3,
-        fillStyle: 'rgba(255, 250, 250, 1)',
-        //coordType: 'bd09mc',
-        globalCompositeOperation: "lighter",
-        size: 1.5,
-        animation: {
-          type: 'time',
-          stepsRange: {
-            start: 0,
-            end: 400
+        mapv_option_stop: {
+          fillStyle: 'rgba(255, 250, 250, 1)',
+          size: 3,
+          label: {
+            show: true
           },
-          trails: 3,
-          duration: 25,  //update every 8 seconds
+          draw: 'simple',
         },
-        draw: 'simple'
+        mapv_option_dot_animation: {
+          zIndex: 3,
+          fillStyle: 'rgba(255, 250, 250, 1)',
+          //coordType: 'bd09mc',
+          globalCompositeOperation: "lighter",
+          size: 1.5,
+          animation: {
+            type: 'time',
+            stepsRange: {
+              start: 0,
+              end: 400
+            },
+            trails: 3,
+            duration: 25,  //update every 8 seconds
+          },
+          draw: 'simple'
+        }
       },
-      lineLayer: undefined,
-      //TODO delete animationLayer related code
-      animationLayer: undefined,
-      //TODO how to match, destory StopLayer
-      stopLayer: undefined,
+      mapLayers: {
+        lineLayer: null,
+        stopLayer: null,
+        canvasLayerLine: null,
+        canvasLayerPointer: null,
+        canvasLayerBack: null,
+        canvasLayerBusVehicle: null,
+      },
       curRouteId: '',
       curTripId: '',
-      timeList: [], //one route's timeList of Points
-      weights: [],
-      //TODO 统一所有的CanvasLayer 用zrender绘制
-      canvasLayerLine: {},
-      canvasLayerPointer: {},
-      canvasLayerBack: {},
-      canvasLayerBusVehicle: {},
-      totalPoints: [],
-      totoalVehicleInfo: [],
       isCollapseLeft: false,
       isCollapseRight: false,
       timer: undefined,
-      //TODO use the real time data
-      curVehiclePoint: undefined,
-      curVehicleInfo: undefined,
+      curVehicle: {
+        curVehiclePoint: undefined,
+        curVehicleInfo: {
+          vehicleId: "",
+          routeId: "",
+          agencyId: "",
+          nextStop: "",
+          speed: 0.0
+        },
+        curVehicleSpeedList:[],
+      },
       realTimeDate: '2022-01-01',
       realTimeTime: '18:00:00',
-      curVehicleSpeedList:[],
     }
   },
   async mounted() {
     let _this = this;
     await MP(_this.ak);
     _this.$nextTick(() => {
-      var timer = setTimeout(() => {
+      setTimeout(() => {
         _this.initMap();
       }, 500);
     });
+    _this.showLegend();
   },
   computed: {},
   methods: {
+    showLegend() {
+      let canvas = this.$refs.mapLegend;
+      let zr = zrender.init(canvas);
+      let legendData = [
+        {
+          label: ">=45",
+          color: 'rgb(23,128,31)'
+        },
+        {
+          label: "30-45",
+          color: 'rgb(52,186,7)'
+        },
+        {
+          label: "20-30",
+          color: 'rgb(114,233,23)'
+        },
+        {
+          label: "10-20",
+          color: 'rgb(255,179,22)'
+        },
+        {
+          label: "5-10",
+          color: 'rgb(238,75,48)'
+        },
+        {
+          label: "<=5km/h",
+          color: 'rgb(201,28,28)'
+        }
+      ]
+      let interval = 25;
+      for (let i = 0, len = legendData.length; i < len; i ++) {
+        let circle = new zrender.Circle({
+          shape: {
+            cx: 20,
+            cy: 20+i * interval,
+            r: 10,
+          },
+          style: {
+            fill: legendData[i].color
+          }
+        });
+        zr.add(circle);
+        let txt = new zrender.Text({
+          style: {
+            textFill: "rgb(0,0,0)",
+            text: legendData[i].label,
+            fontSize: 12,
+          },
+          position:[35, i*interval + 17]
+        });
+        zr.add(txt);
+      }
+    },
     /**
      * @description clear TimeSpan
      */
@@ -234,7 +288,7 @@ export default {
      */
     toggleCollapseLeft() {
       this.isCollapseLeft = !this.isCollapseLeft;
-      if (this.isCollapseLeft == true) {
+      if (this.isCollapseLeft === true) {
         document.getElementById('asideLeft').style.marginLeft = "0";
         document.getElementById('asideLeft').style.marginRight = "0";
       } else {
@@ -247,7 +301,7 @@ export default {
      */
     toggleCollapseRight() {
       this.isCollapseRight = !this.isCollapseRight;
-      if (this.isCollapseRight == true) {
+      if (this.isCollapseRight === true) {
         document.getElementById('asideRight').style.marginLeft = "0";
         document.getElementById('asideRight').style.marginRight = "0";
       } else {
@@ -272,8 +326,6 @@ export default {
      */
     async initMap() {
       let _this = this;
-      _this.trajectories = []; //clear
-      _this.curRouteId = ""; //clear
       _this.map = new BMap.Map("baiduMap", {
         enableMapClick: false
       });
@@ -284,7 +336,7 @@ export default {
       ["dragging", "dragstart", "dragend", "zoomstart", "zoomend"].forEach(
           function (item) {
             _this.map.addEventListener(item, () => {
-              if(_this.$refs.detailWindow.style.display == 'block') {
+              if(_this.$refs.detailWindow.style.display === 'block') {
                 _this.setDetailWindowPosition();
               }
             })
@@ -297,15 +349,21 @@ export default {
       });
       _this.listAllRoutesIdOption();
       _this.map.addControl(navigation); //add navigation control to map
-      // _this.displayOriginTrips_mapv();  // mapv Layer
-      await _this.displayOriginTrips_Canvas(); //canvas Layer
-      // _this.timer = setInterval(this.displayAllVehicleIdByTime, 1000);
-      // await _this.generateVisualVehicle();
+      await _this.displayOriginTrips_Canvas(); //canvas Layer for route
+      await _this.displayVehicle_Canvas(); //canvas Layer for busVehicle
+    },
+    async displayVehicle_Canvas() {
+      this.$message({
+        message: 'Loading the real-time bus position',
+        type: 'success'
+      });
+      let _this = this;
       await _this.updateVehicleData();
-      _this.canvasLayerBusVehicle = new CanvasLayer({
+      _this.timer = setInterval(this.updateVehicleData, 1000*60);
+      _this.mapLayers.canvasLayerBusVehicle = new CanvasLayer({
         map: _this.map,
-        update: _this.new_updateCanvasBusVehicle,
-        zIndex: 5 //make sure the layer's index is high encough to trigger the mouse methods
+        update: _this.updateCanvasBusVehicle,
+        zIndex: 5 //make sure the layer's index is high enough to trigger the mouse methods
       });
     },
     /**
@@ -313,73 +371,67 @@ export default {
      * by canvas
      */
     async displayOriginTrips_Canvas() {
+      this.$message({
+        message: 'Loading the routes',
+        type: 'success'
+      });
       let _this = this;
       var routes = [];
-      _this.trajectories = [];
-      _this.totalPoints = [];
+      _this.trajData.trajectories = [];
+      _this.trajData.totalPoints = [];
       /**
        * @get, url: /mapv/origin
        * @dataType List<RoutesVo>
        */
       await this.$axios.get('/mapv/origin').then(response => {
-        if (response && response.status == 200) {
+        if (response && response.status === 200) {
           routes = response.data;
           //Foreach route
-          _this.visualVehicle.vehicleInfos = []
           routes.forEach(route => {
-            _this.trajectories.push(route.trajJsonModel);
-            //TODO the visualVehicle Need getFrom realTime
-            _this.visualVehicle.vehicleInfos.push({routeId: route.routeId, agencyId: route.agencyId})
+            _this.trajData.trajectories.push(route.trajJsonModel);
           });
           //CanvasLayer color to display the speed of points
-          let maxLength = _this.trajectories.length;
+          let maxLength = _this.trajData.trajectories.length;
           for (let k = 0; k < maxLength; k++) {
             let pointsList = [];
-            let tempList = _this.trajectories[k].geometry.coordinates;
+            let tempList = _this.trajData.trajectories[k].geometry.coordinates;
             for (let i = 0; i < tempList.length; i++) {
               let bp = new BMap.Point(tempList[i][0], tempList[i][1]);
               pointsList.push(bp);
             }
-            _this.totalPoints.push(pointsList);
-            //TODO use real data
+            _this.trajData.totalPoints.push(pointsList);
             let weightList = [];
             for (let i = 0; i < pointsList.length; i += 1) {
               weightList.push(Math.random() * 100);
             }
-            _this.weights.push(weightList);
+            _this.trajData.weights.push(weightList);
           }
-        }
+        } else _this.dealResponse(response);
       }).catch(error => {
-        console.log(error);
+        _this.dealError(error);
       });
-      //init CanvasLayers
-      // _this.canvasLayerBack = new CanvasLayer({
-      //   map: _this.map,
-      //   update: _this.updateCanvasBack
-      // })
-      _this.canvasLayerLine = new CanvasLayer({
+
+      _this.mapLayers.canvasLayerLine = new CanvasLayer({
         map: _this.map,
         update: _this.updateCanvasLine
       });
-      // _this.canvasLayerPointer = new CanvasLayer({
-      //   map: _this.map,
-      //   update: _this.updateCanvasPointer
-      // });
+
     },
     /**
      * @description triggered when set timespan, list and display by timespan
      */
     setTimeSpan() {
-      this.displayTripsByTimeSpan();
+      // this.displayTripsByTimeSpan();
       this.listRoutesIdOptionByTimeSpan();
     },
     /**
      * @description display route's trip by timespan
      */
     displayTripsByTimeSpan() {
+      this.stopDisplayVehicles();
       let _this = this;
       _this.clearAll();
-      _this.trajectories = [];
+      _this.trajData.trajectories = [];
       let routes = [];
       /**
        * @get, url = '/mapv/timespan/?startDate={startDate}&endDate={endDate}'
@@ -387,22 +439,24 @@ export default {
        */
       this.$axios.get('/mapv/timespan/?startDate=' + _this.timeSpan[0].toLocaleDateString().replaceAll('/', '-')
           + '&endDate=' + _this.timeSpan[1].toLocaleDateString().replaceAll('/', '-')).then(response => {
-        routes = response.data;
-        //push each Route to trajetories
-        routes.forEach(route => {
-          _this.trajectories.push(route.trajJsonModel);
-        });
-        //check the routes
-        if (routes.length == 0) {
-          this.$message({
-            message: 'The Bus Service List In This TimeSpan is Empty',
-            type: 'warning'
+        if(response && response.status === 200) {
+          routes = response.data;
+          //push each Route to trajetories
+          routes.forEach(route => {
+            _this.trajData.trajectories.push(route.trajJsonModel);
           });
-          return;
-        }
-        _this.displayMapvLayer();
+          //check the routes
+          if (routes.length === 0) {
+            this.$message({
+              message: 'The Bus Service List In This TimeSpan is Empty',
+              type: 'warning'
+            });
+            return;
+          }
+          _this.displayMapvLineLayer();
+        } else _this.dealResponse(response);
       }).catch(error => {
-        console.log(error);
+        _this.dealError(error);
       });
     },
     /**
@@ -415,7 +469,11 @@ export default {
        * @dataType List<RoutesEntity>
        */
       this.$axios.get('/routes').then(response => {
-        _this.routeIdOptions = response.data;
+        if(response && response.status === 200)
+          _this.routeIdOptions = response.data;
+        else _this.dealResponse(response);
+      }).catch(error => {
+        _this.dealError(error);
       });
     },
     /**
@@ -429,7 +487,10 @@ export default {
        */
       this.$axios.get('/routes/timespan?startDate=' + _this.timeSpan[0].toLocaleDateString().replaceAll('/', '-')
           + '&endDate=' + _this.timeSpan[1].toLocaleDateString().replaceAll('/', '-')).then(response => {
-        _this.routeIdOptions = response.data;
+            if(response && response.status === 200)  _this.routeIdOptions = response.data;
+            else _this.dealResponse(response);
+      }).catch(error =>{
+        _this.dealError(error);
       });
     },
     /**
@@ -437,7 +498,7 @@ export default {
      * by timespan or not
      */
     listTrips() {
-      if (this.timeSpan.length == 0) { // if set timespan
+      if (this.timeSpan.length === 0) { // if set timespan
         this.listTripsByRouteId();
       } else { //if not set timespan
         this.listTripsByRouteIdAndTimeSpan();
@@ -453,7 +514,10 @@ export default {
        * @dataType List<TripsEntity>
        */
       this.$axios.get('/trips?routeId=' + _this.curRouteId).then(response => {
-        _this.tripIdOptions = response.data;
+        if(response && response.status === 200) _this.tripIdOptions = response.data;
+        else _this.dealResponse(response);
+      }).catch(error => {
+        _this.dealError(error);
       });
     },
     /**
@@ -468,28 +532,29 @@ export default {
       this.$axios.get('/trips/timespan?routeId=' + _this.curRouteId
           + '&startDate=' + _this.timeSpan[0].toLocaleDateString().replaceAll('/', '-')
           + '&endDate=' + _this.timeSpan[1].toLocaleDateString().replaceAll('/', '-')).then(response => {
-        _this.tripIdOptions = response.data;
+            if(response && response.status === 200) _this.tripIdOptions = response.data;
+            else _this.dealResponse(response);
+      }).catch(error => {
+        _this.dealError(error);
       });
     },
     /**
      * @description get one trajectory by routeId and tripId
      */
-    getOneTrajectory() {
+    displayOneTrajectory() {
       let _this = this;
-      _this.trajectories = [];
-      _this.totalPoints = [];
-      _this.stopData = [];
-      _this.timesData = [];
-      _this.dotData = [];
+      _this.trajData.trajectories = [];
+      _this.trajData.totalPoints = [];
+      _this.trajData.stopData = [];
       //Warning message
-      if (_this.curRouteId == "") {
+      if (_this.curRouteId === "") {
         this.$message({
           message: 'Please Check the RouteId is Selected',
           type: 'warning'
         });
         return;
       }
-      if (_this.curTripId == "") {
+      if (_this.curTripId === "") {
         this.$message({
           message: 'Please Check the TripId is Selected',
           type: 'warning'
@@ -497,25 +562,14 @@ export default {
         return;
       }
       /**
-       * @get, url = '/mapv/timeList?routeId={routeId}&tripId={tripId}'
-       * @dataType List<Double>
-       */
-      this.$axios.get('/mapv/timeList?routeId=' + _this.curRouteId + "&tripId=" + _this.curTripId).then(response => {
-        if (response && response.status == 200) {
-          _this.timeList = response.data;
-        }
-      }).catch(error => {
-        console.log(error);
-      });
-      /**
        * @get, url = '/mapv/?routeId={routeId}&tripId={tripId}'
        * @dataType RoutesVo
        */
       this.$axios.get('/mapv/?routeId=' + _this.curRouteId + "&tripId=" + _this.curTripId).then(response => {
-        if (response && response.status == 200) {
-          _this.trajectories.push(response.data.trajJsonModel);
+        if (response && response.status === 200) {
+          _this.trajData.trajectories.push(response.data.trajJsonModel);
           //warning message
-          if (_this.trajectories[0].geometry.coordinates.length == 0) {
+          if (_this.trajData.trajectories[0].geometry.coordinates.length === 0) {
             this.$message({
               message: 'Please Check Matched RouteId and TripId are selected',
               type: 'error'
@@ -523,123 +577,70 @@ export default {
             return;
           }
           this.$message({
-            message: 'Please be patient, the map is loading',
+            message: 'The selected trajectory is loading, please wait',
             type: 'success'
           });
-          var dataSet = new mapv.DataSet(_this.trajectories[0]);
-          var centerPoint = new BMap.Point(_this.trajectories[0].geometry.coordinates[0][0], _this.trajectories[0].geometry.coordinates[0][1]);
+          let dataSet = new mapv.DataSet(_this.trajData.trajectories);
+          let curGeometry = _this.trajData.trajectories[0].geometry;
+          let centerPoint = new BMap.Point(curGeometry.coordinates[0][0], curGeometry.coordinates[0][1]);
           _this.map.centerAndZoom(centerPoint, 14);
-          _this.lineLayer = new mapv.baiduMapLayer(_this.map, dataSet, _this.mapv_bus_line_light_green);
-        }
+          _this.mapLayers.lineLayer = new mapv.baiduMapLayer(_this.map, dataSet, _this.mapVOptions.mapv_bus_line_light_green);
+
+          let pointsList = [];
+          for (let i = 0; i < curGeometry.coordinates.length; i++) {
+            let bp = new BMap.Point(curGeometry.coordinates[i][0], curGeometry.coordinates[i][1]);
+            pointsList.push(bp);
+          }
+          _this.trajData.totalPoints.push(pointsList);
+          //init CanvasLayers
+          // _this.mapLayers.canvasLayerBack = new CanvasLayer({
+          //   map: _this.map,
+          //   update: _this.updateCanvasBack
+          // });
+          // _this.mapLayers.canvasLayerLine = new CanvasLayer({
+          //   map: _this.map,
+          //   update: _this.updateCanvasLine
+          // });
+          _this.mapLayers.canvasLayerPointer = new CanvasLayer({
+            map: _this.map,
+            update: _this.updateCanvasPointer
+          });
+        } else _this.dealResponse(response);
       }).catch((error) => {
-        console.log(error);
+        _this.dealError(error);
       });
       /**
        * @get, url = '/stops/?tripId={tripId}'
        * @dataType List<StopsVo>
        */
       this.$axios.get('/stops/?tripId=' + _this.curTripId).then(response => {
-        if (response && response.status == 200) {
-          _this.stopData = response.data;
+        if (response && response.status === 200) {
+          let tempStopData = response.data;
           //process stop data to geometry
-          for (var i = 0; i < _this.stopData.length; i++) {
-            // _this.timesData.push({
-            //   geometry: {
-            //     type: "Point",
-            //     coordinates: [_this.stopData[i].stopLon, _this.stopData[i].stopLat]
-            //   },
-            //   count: 1,
-            //   time: i,
-            // })
-            _this.dotData.push({
+          for (let i = 0; i < tempStopData.length; i++) {
+            _this.trajData.stopData.push({
               geometry: {
                 type: "Point",
-                coordinates: [_this.stopData[i].stopLon, _this.stopData[i].stopLat]
+                coordinates: [tempStopData[i].stopLon, tempStopData[i].stopLat]
               }
             });
           }
-          // var dataSet = new mapv.DataSet(_this.timesData)
-          // _this.animationLayer = new mapv.baiduMapLayer(_this.map, dataSet, _this.mapv_option_dot_animation)
-
-          //CanvasLayer color to display the speed of points
-          let pointsList = [];
-          for (let i = 0; i < _this.trajectories[0].geometry.coordinates.length; i++) {
-            let bp = new BMap.Point(_this.trajectories[0].geometry.coordinates[i][0], _this.trajectories[0].geometry.coordinates[i][1]);
-            pointsList.push(bp);
-          }
-          _this.totalPoints.push(pointsList);
-          //TODO use real data
-          let weightList = [];
-          for (let i = 0; i < pointsList.length; i += 1) {
-            weightList.push(Math.random() * 100);
-          }
-          _this.weights.push(weightList);
-          //init CanvasLayers
-          _this.canvasLayerBack = new CanvasLayer({
-            map: _this.map,
-            update: _this.updateCanvasBack
-          });
-          _this.canvasLayerLine = new CanvasLayer({
-            map: _this.map,
-            update: _this.updateCanvasLine
-          });
-          _this.canvasLayerPointer = new CanvasLayer({
-            map: _this.map,
-            update: _this.updateCanvasPointer
-          });
-          var dataSet = new mapv.DataSet(_this.dotData);
-          _this.stopLayer = new mapv.baiduMapLayer(_this.map, dataSet, _this.mapv_option_stop);
-        }
-        _this.moveMkPoint();
-        // _this.updateCanvasLine()
+          let dataSet = new mapv.DataSet(_this.trajData.stopData);
+          _this.mapLayers.stopLayer = new mapv.baiduMapLayer(_this.map, dataSet, _this.mapVOptions.mapv_option_stop);
+        } else _this.dealResponse(response);
       }).catch((error) => {
-        console.log(error);
+        _this.dealError(error);
       });
     },
     /**
      * @description display mapV layers
      * 1. mapV linelayer
-     * 2. mapV animationLayer (light)
+     * 2. mapV animationLayer (X)
      */
-    displayMapvLayer() {
+    displayMapvLineLayer() {
       let _this = this;
-      // let times = [];
-      // let num = _this.trajectories.length;
-      // for (let k = 0; k < num; k++){
-      //   let traj = _this.trajectories[k];
-      //   let coordsArr = traj.geometry.coordinates;
-      //   let i;
-      //   let random1 = _this.getRandomInt(0,20);
-      //   let random2 = 10;
-      //   if (k < num / 2) {
-      //     for (i = 0; i < coordsArr.length; i++) {
-      //       times.push({
-      //         geometry: {
-      //           type: 'Point',
-      //           coordinates: [coordsArr[i][0], coordsArr[i][1]]
-      //         },
-      //         count: 1,
-      //         time: i+random1
-      //       });
-      //     }
-      //   }else {
-      //     let m = random2;
-      //     for (i = coordsArr.length - 1; i >= 0; i--) {
-      //       times.push({
-      //         geometry: {
-      //           type: 'Point',
-      //           coordinates: [coordsArr[i][0], coordsArr[i][1]]
-      //         },
-      //         count: 1,
-      //         time: m++
-      //       });
-      //     }
-      //   }
-      // }
-      var dataSet = new mapv.DataSet(_this.trajectories); //set dataSet
-      _this.lineLayer = new mapv.baiduMapLayer(_this.map, dataSet, _this.mapv_bus_line_light_green); // set the layer
-      // var dataSet = new mapv.DataSet(times);
-      // _this.animationLayer = new mapv.baiduMapLayer(_this.map, dataSet, _this.mapv_option_dot_animation);
+      let dataSet = new mapv.DataSet(_this.trajData.trajectories); //set dataSet
+      _this.mapLayers.lineLayer = new mapv.baiduMapLayer(_this.map, dataSet, _this.mapVOptions.mapv_bus_line_light_green); // set the layer
     },
     /**
      * @description show one route's trajectory
@@ -647,8 +648,16 @@ export default {
      * 2. show the trajectory
      */
     showOneTrajectory() {
-      this.clearTraject();
-      this.getOneTrajectory();
+      this.$message({
+        message: "Clear and Stop the real-time bus data update",
+        type: "warning"
+      });
+      if(this.visualVehicles.vehicleIds.length !== 0) {
+        this.clearDisplayVehicles();
+        this.stopDisplayVehicles();
+      }
+      this.clearAll();
+      this.displayOneTrajectory();
     },
     /**
      * @description clear all the overlays of map
@@ -656,69 +665,30 @@ export default {
     clearAll() {
       let _this = this;
       _this.map.clearOverlays();
-      if (_this.lineLayer) {
-        _this.lineLayer.destroy();
-        _this.lineLayer = undefined;
+      if (_this.mapLayers.lineLayer != null) {
+        _this.mapLayers.lineLayer.destroy();
+        _this.mapLayers.lineLayer = null;
       }
-      // if (_this.animationLayer) {
-      //   _this.animationLayer.destroy()
-      //   _this.animationLayer = undefined
-      // }
-    },
-    //TODO destroy
-    /**
-     * @description clear trajectories
-     */
-    clearTraject() {
-      let _this = this;
-      _this.map.clearOverlays();
-      if (_this.lineLayer) {
-        _this.lineLayer.destroy();
-        _this.lineLayer = undefined;
+      if (_this.mapLayers.stopLayer != null) {
+        _this.mapLayers.stopLayer.destroy();
+        _this.mapLayers.stopLayer = null;
       }
-      // _this.stopLayer.destroy()
-      // _this.stopLayer = undefined
-      // }
-    },
-    /**
-     * @description animation move the marker Point
-     */
-    moveMkPoint() {
-      this.points = this.trajectories.geometry.coordinates;
-      this.busMk = new BMap.Marker(new BMap.Point(this.points[0][this.points.length / 2], this.points[0][this.points.length / 2])); //init the busmarker
-      this.map.addOverlay(this.busMk); // add overlay to map
-      this.timer_is_on = true;
-      this.resetMkPoint(0); // reset the Maker point position
-    },
-    /**
-     * @description reset the Maker point position
-     * @param i index of position
-     */
-    resetMkPoint(i) {
-      let _this = this;
-      if (!_this.timer_is_on) return; // a stop sign
-      var point = new BMap.Point(_this.points[i][0], _this.points[i][1]);
-      _this.busMk.setPosition(point);
-      // _this.map.setCenter(point);
-      if (i < _this.points.length) {
-        setTimeout(function () {
-          i++
-          _this.resetMkPoint(i) //recursion
-        }, parseInt(_this.timeList[i]));
-      } else {
-        _this.timer_is_on = false;
+      if (_this.mapLayers.canvasLayerLine != null) {
+        _this.mapLayers.canvasLayerLine = null;
+      }
+      if (_this.mapLayers.canvasLayerBack != null) {
+        _this.mapLayers.canvasLayerBack = null;
+      }
+      if (_this.mapLayers.canvasLayerBack != null) {
+        _this.mapLayers.canvasLayerBack = null;
+      }
+      if (_this.mapLayers.canvasLayerBusVehicle != null) {
+        _this.mapLayers.canvasLayerBusVehicle = null;
       }
     },
-    //TODO generateAllVehicleByTime
-    async showAllVehicleByTime() {
-        let _this = this;
-        // var lastVehicles = $.extend(true, {},_this.visualVehicles);
-        await _this.updateVehicleData();
-
-    },
-    new_updateCanvasBusVehicle() {
+    updateCanvasBusVehicle() {
       let that = this;
-      let _this = this.canvasLayerBusVehicle;
+      let _this = this.mapLayers.canvasLayerBusVehicle;
       if (!_this.zr) {
         _this.zr = zrender.init(_this.canvas);
       } else {
@@ -732,7 +702,7 @@ export default {
       let infos = that.visualVehicles.vehicleInfos;
       for (let k = 0; k < weights.length; k ++) {
         const pixel = that.map.pointToPixel(points[k]);
-        var circle = new zrender.Circle({
+        let circle = new zrender.Circle({
           shape: {
             cx: pixel.x,
             cy: pixel.y,
@@ -743,10 +713,14 @@ export default {
             stroke: '#faf9f9'//'#2e2d2d'
           },
           onclick: async function () {
-            that.curVehiclePoint = points[k];
-            that.curVehicleInfo = infos[k];
+            that.$message({
+              message: 'Loading the detailWindow',
+              type: 'success'
+            });
+            that.curVehicle.curVehiclePoint = points[k];
+            that.curVehicle.curVehicleInfo = infos[k];
             await that.curVehicleChartPrepare(k);
-            that.$refs.speedChart.updateVehicleData();
+            that.$refs.speedChart.updateSpeedChartVehicleData();
             that.showDetailWindow();
             that.setDetailWindowPosition();
           }
@@ -755,11 +729,11 @@ export default {
         // Render arrows according to render pixel distance
         // Pointer length
         const pointerLong = 8;
-        const res = that.new_generateBusVehiclePointer(pointerLong, pixel, bearings[k], 45);
+        const res = that.generateBusVehiclePointer(pointerLong, pixel, bearings[k], 45);
         const aPixel = res.aPixel; //set arrow point
         const bPixel = res.bPixel;
         const midPixel = res.midPixel;
-        var line1 = new zrender.Polyline({
+        let line1 = new zrender.Polyline({
           shape: {
             points: [
               [aPixel.x, aPixel.y],
@@ -775,25 +749,35 @@ export default {
         _this.zr.add(line1);
       }
     },
+    removeOneVehicle(tempIdx) {
+      this.visualVehicles.vehicleIds.splice(tempIdx,1);
+      this.visualVehicles.bearings.splice(tempIdx,1);
+      this.visualVehicles.speeds.splice(tempIdx,1);
+      this.visualVehicles.vehicleInfos.splice(tempIdx,1);
+      this.visualVehicles.points.splice(tempIdx,1);
+    },
     async curVehicleChartPrepare(k) {
       let _this = this;
       let vehicleId = _this.visualVehicles.vehicleIds[k];
-      _this.curVehicleInfo = _this.visualVehicles.vehicleInfos[k];
+      _this.curVehicle.curVehicleInfo = _this.visualVehicles.vehicleInfos[k];
       await _this.$axios.get("/realTime/speed/?vehicleId=" + vehicleId + "&curTime=" + _this.realTimeDate + " " + _this.realTimeTime).then((response) => {
-        if (response && response.status) { //last seven days
-          _this.curVehicleSpeedList = response.data;
-        }
+        if (response && response.status === 200) { //last seven days
+          _this.curVehicle.curVehicleSpeedList = response.data;
+        } else _this.dealResponse(response);
+      }).catch(error=>{
+        _this.dealError(error);
       });
     },
-    new_generateBusVehiclePointer(lineLong, pixel, bearing, theta) {
+    generateBusVehiclePointer(lineLong, pixel, bearing, theta) {
       const aPixel = {};
       const bPixel = {};
       const midPixel = {};
-      let angle = bearing;
+      let angle = bearing + 90;
       let angle1 = (angle + theta) * Math.PI / 180;
       let angle2 = (angle - theta) * Math.PI / 180
       midPixel.x = pixel.x - Math.cos(angle * Math.PI / 180)*lineLong/2;
       midPixel.y = pixel.y - Math.sin(angle * Math.PI / 180)*lineLong/2;
+      aPixel.x = Math.cos(angle1)*lineLong + midPixel.x;
       aPixel.x = Math.cos(angle1)*lineLong + midPixel.x;
       aPixel.y = Math.sin(angle1)*lineLong + midPixel.y;
       bPixel.x = Math.cos(angle2)*lineLong + midPixel.x;
@@ -802,39 +786,56 @@ export default {
     },
     async updateVehicleData() {
       let _this = this;
-      var curTime = _this.realTimeDate + ' ' + _this.realTimeTime;
+      let now = new Date();
+      _this.realTimeTime = now.getHours() + ":" + now.getMinutes() + ":" + now.getSeconds();
+      let curTime = _this.realTimeDate + ' ' + _this.realTimeTime;
+      let curTimeDate = new Date(curTime);
+      let DELETEBEFORE = 5*1000*60;
       await _this.$axios.get('/realTime/?curTime=' + _this.realTimeDate + ' ' + _this.realTimeTime).then((response) => {
-        if(response && response.status) {
-          var tempVehicleList = response.data;
-          tempVehicleList.forEach((tempVehicle) => {
-            if(_this.visualVehicles.vehicleIds.indexOf(tempVehicle.vehicleId) == -1) { //not exist
+        if(response && response.status === 200) {
+          let realTimeVehicleList = response.data;
+          realTimeVehicleList.forEach((realTimeVehicle) => { // {point speed}
+            let tempVehicle = realTimeVehicle.point;
+            let tempSpeed = window.isNaN(realTimeVehicle.speed) ? 0 : realTimeVehicle.speed.toFixed(2);
+            if(_this.visualVehicles.vehicleIds.indexOf(tempVehicle.vehicleId) === -1) { //not exist
               _this.visualVehicles.vehicleIds.push(tempVehicle.vehicleId);
-              _this.visualVehicles.speeds.push(0);
+              _this.visualVehicles.speeds.push(tempSpeed);
               _this.visualVehicles.points.push(new BMap.Point(tempVehicle.lon, tempVehicle.lat));
               _this.visualVehicles.bearings.push(tempVehicle.bearing);
               _this.visualVehicles.vehicleInfos.push({routeId: tempVehicle.routeId, agencyId: tempVehicle.agencyId,
-                nextStop: tempVehicle.nextStop, speed: 0, recordedTime: tempVehicle.recordedTime, vehicleId: tempVehicle.vehicleId});
+                nextStop: tempVehicle.nextStop, speed: tempSpeed, recordedTime: tempVehicle.recordedTime, vehicleId: tempVehicle.vehicleId});
             } else {
               let curVIdx = _this.visualVehicles.vehicleIds.indexOf(tempVehicle.vehicleId);
-              var lastPoint = _this.visualVehicles.points[curVIdx];
-              var lastTime = _this.visualVehicles.vehicleInfos[curVIdx].recordedTime;
-              var newPoint = new BMap.Point(tempVehicle.lon, tempVehicle.lat);
-              var newSpeed = _this.calSpeed(tempVehicle.recordedTime, newPoint, lastTime, lastPoint);
-              _this.visualVehicles.points[curVIdx] = newPoint;
-              _this.visualVehicles.bearings[curVIdx] = tempVehicle.bearing;
-              _this.visualVehicles.speeds[curVIdx] = newSpeed;
-              _this.visualVehicles.vehicleInfos[curVIdx] = {routeId: tempVehicle.routeId, agencyId: tempVehicle.agencyId,
-                nextStop: tempVehicle.nextStop, speed: newSpeed, recordedTime: tempVehicle.recordedTime, vehicleId: tempVehicle.vehicleId}
+              //remove the vehicle already arrival the end
+              if(tempVehicle.nextStop === "") _this.removeOneVehicle(curVIdx);
+              else {
+                _this.visualVehicles.points[curVIdx] = new BMap.Point(tempVehicle.lon, tempVehicle.lat);
+                _this.visualVehicles.bearings[curVIdx] = tempVehicle.bearing;
+                _this.visualVehicles.speeds[curVIdx] = tempSpeed;
+                _this.visualVehicles.vehicleInfos[curVIdx] = {routeId: tempVehicle.routeId, agencyId: tempVehicle.agencyId,
+                  nextStop: tempVehicle.nextStop, speed: tempSpeed, recordedTime: tempVehicle.recordedTime, vehicleId: tempVehicle.vehicleId}
+              }
             }
           });
-        }
+          //remove the vehicle not update with past 5 minutes
+          _this.visualVehicles.vehicleIds.forEach((curVehicle) => {
+            let tempVIdx = _this.visualVehicles.vehicleIds.indexOf(curVehicle);
+            let recordTime = new Date(_this.visualVehicles.vehicleInfos[tempVIdx].recordedTime);
+            if(curTimeDate.getTime() - recordTime.getTime() >= DELETEBEFORE) _this.removeOneVehicle(tempVIdx);
+          });
+        } else _this.dealResponse(response);
+      }).catch(error=>{
+        _this.dealError(error);
       });
+      if(_this.mapLayers.canvasLayerBusVehicle != null) _this.updateCanvasBusVehicle();
     },
     calSpeed(curTime, curPoint, lastTime, lastPoint) {
-      if(curTime == lastTime)  return 0;
+      if(curTime === lastTime)  return 0;
       else {
         let dist = this.calDistance(curPoint, lastPoint);
-        let speed = dist / (lastTime - curTime); // m/s
+        let date1 = new Date(lastTime);
+        let date2 = new Date(curTime);
+        let speed = dist / (date2.getTime() - date1.getTime()) * 1000; // m/s
         return Math.round(speed * 3.6); //km/h
       }
     }
@@ -849,125 +850,70 @@ export default {
         function getRad (d) {
           return d * PI / 180.0;
         }
-        var radLat1 = getRad(lat1);
-        var radLat2 = getRad(lat2);
-        var a = radLat1 - radLat2;
-        var b = getRad(lng1) - getRad(lng2);
-        var s = 2*Math.asin(Math.sqrt(Math.pow(Math.sin(a/2),2) + Math.cos(radLat1)*Math.cos(radLat2)*Math.pow(Math.sin(b/2),2)));
+        let radLat1 = getRad(lat1);
+        let radLat2 = getRad(lat2);
+        let a = radLat1 - radLat2;
+        let b = getRad(lng1) - getRad(lng2);
+        let s = 2*Math.asin(Math.sqrt(Math.pow(Math.sin(a/2),2) + Math.cos(radLat1)*Math.cos(radLat2)*Math.pow(Math.sin(b/2),2)));
         s = s*EARTH_RADIUS;
         s = Math.round(s*10000)/10000.0;
         return s*1000; //m
       }
-      let result = getGreatCircleDistance(curPoint.lat, curPoint.lng, lastPoint.lat, lastPoint.lng);
-      return result;
-    },
-    /**
-     * @description display all the vehicle by real time
-     * @returns {Promise<void>}
-     */
-    //TODO modify the method
-    async displayAllVehicleIdByTime() {
-      let _this = this;
-      var realTimeData;
-      var curTime = new Date().toLocaleTimeString().slice(2);
-      var tempVehicleList;
-      /**
-       * @get, url = '/realTime/vehicle/?recordedTime={YYYY-mm-dd h:m:s}'
-       * @dataType String {vehicleId}
-       */
-      this.$axios.get('/realTime/vehicle/?recordedTime=2022-01-01 ' + curTime).then(response => {
-        if (response && response.status == 200) {
-          tempVehicleList = response.data;
-          tempVehicleList.forEach(function (tempVehicleId) {
-            /**
-             * @get, url = '/realTime/?vehicleId={vehicleId}&recordedTime={YYYY-mm-dd h-m-s}'
-             * @dataType RealTimeDataEntity
-             */
-            _this.$axios.get("/realTime/?vehicleId=" + tempVehicleId + "&recordedTime=2022-01-01 " + curTime).then(response => {
-              realTimeData = response.data;
-              var curPoint = new BMap.Point(realTimeData.lon, realTimeData.lat);
-              if (_this.vehicleList.indexOf(tempVehicleId) == -1) { //if not exist
-                _this.vehicleList.push(tempVehicleId);
-                var tempMk = new BMap.Marker(curPoint);
-                tempMk.id = tempVehicleId;
-                //prepare the infoWindow content
-                var Mktext = "Time: 2022-01-01 " + curTime + "\n" +
-                    "vehicleId: " + realTimeData.vehicleId + "\n" +
-                    "routeId: " + realTimeData.routeId + "\n";
-                var infoWindow = new BMap.InfoWindow("<p>" + "Time: 2022-01-01 " + curTime + "</p>" +
-                    "<p>" + "routeId: " + realTimeData.routeId + "</p>" +
-                    "<p>" + "vehicleId: " + realTimeData.vehicleId + "</p>" +
-                    "<el-button></el-button>");
-                tempMk.addEventListener("click", function () {
-                  this.openInfoWindow(infoWindow)
-                }); //add EventListener of Maker
-                _this.MapMkList.push(tempMk);
-                _this.map.addOverlay(tempMk); // add Overlay
-                tempMk.setPosition(curPoint); // set the Maker position
-              } else { // already exist
-                var tempIdx = _this.vehicleList.indexOf(tempVehicleId);
-                _this.MapMkList[tempIdx].setPosition(curPoint); // move the Maker
-                if (realTimeData.nextStop == "") {
-                  _this.removeMkFun(tempVehicleId); //
-                }
-              }
-            });
-          });
-        }
-      });
+      return getGreatCircleDistance(curPoint.lat, curPoint.lng, lastPoint.lat, lastPoint.lng);
     },
     /**
      * @description start the real time display
      */
     startDisplayVehicles() {
-      // this.clearAll()
-      // this.displayOriginTrips_mapv()
-      // this.timer = setInterval(this.displayAllVehicleIdByTime, 1000)
-      let _this = this;
-      //TODO test
-      var curPoint = new BMap.Point(-73.88601, 40.880624);
-      var lastPoint = new BMap.Point(-73.88, 40.8);
-      var tempMk = new BMap.Marker(curPoint);
-      tempMk.id = "testVehicle";
-      //prepare the infoWindow content
-      tempMk.addEventListener("click", function () {
-        let tempChart = Vue.extend({
-          render: h => h(BusSpeed_Chart)
+      if(this.timer !== null) {
+        this.$message({
+          message: 'Real-time bus data update has started',
+          type: 'warning'
         });
-        let option = {
-          width: 450,
-          height: 300,
-          title: 'VehicleInfo',
-          enableMessage: true,
-        };
-        let component = new tempChart().$mount();
-        var infoWindow = new BMap.InfoWindow(component.$mount().$el, option);
-        this.openInfoWindow(infoWindow);
-      }) //add EventListener of Maker
-      _this.MapMkList.push(tempMk);
-      _this.map.addOverlay(tempMk); // add Overlay
-      tempMk.setPosition(curPoint); // set the Maker position
+        return;
+      }
+      this.$message({
+        message: 'Real-time bus data update is starting, please wait',
+        type: 'success'
+      });
+      if(this.mapLayers.canvasLayerBusVehicle != null) {
+        this.updateVehicleData();
+        this.updateCanvasBusVehicle();
+      } else {
+        this.displayVehicle_Canvas();
+      }
     },
     /**
      * @description stop the real time display
      */
     stopDisplayVehicles() {
-      clearInterval(this.timer);
-    },
-    /**
-     * @description remove the vehicleId
-     * @param vehicleId
-     * @returns {boolean}
-     */
-    removeMkFun(vehicleId) {
-      let _this = this;
-      var allOverlay = this.map.getOverlay();
-      for (let i = 0; i < allOverlay.length - 1; i++) {
-        if (allOverlay[i].id == vehicleId) {
-          _this.map.removeOverlay(allOverlay[i]); //remove the vehicleId overlay
-          return false;
-        }
+      this.$message({
+        message: 'Stop real-time bus data updates',
+        type: 'warning'
+      });
+      if(this.timer === null) {
+        this.$message({
+          message: 'Real-time bus data update has stopped',
+          type: 'error'
+        });
+        return;
       }
+      clearInterval(this.timer);
+      this.timer = null;
+    },
+    clearDisplayVehicles() {
+      this.$message({
+        message: 'Bus point on the map is clearing, please wait',
+        type: 'warning'
+      });
+      this.visualVehicles = {
+        vehicleIds: [],
+        vehicleInfos: [],
+        bearings: [],
+        points: [],
+        speeds: [],
+      };
+      this.updateCanvasBusVehicle();
     },
     /**
      * @description updateCanvas Line
@@ -975,12 +921,12 @@ export default {
      */
     updateCanvasLine() {
       let _this = this;
-      const ctx = _this.canvasLayerLine.canvas.getContext('2d'); //init
+      const ctx = _this.mapLayers.canvasLayerLine.canvas.getContext('2d'); //init
       if (!ctx) return;
       ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); //clear
-      for (let k = 0; k < _this.totalPoints.length; k++) {
-        let pointsList = _this.totalPoints[k];
-        let weightList = _this.weights[k];
+      for (let k = 0; k < _this.trajData.totalPoints.length; k++) {
+        let pointsList = _this.trajData.totalPoints[k];
+        let weightList = _this.trajData.weights[k];
         if (pointsList.length !== 0) {
           for (let i = 0, len = pointsList.length; i < len - 2; i += 1) {
             //init pixels
@@ -1010,13 +956,13 @@ export default {
      */
     updateCanvasPointer() {
       let _this = this;
-      const ctx = _this.canvasLayerPointer.canvas.getContext('2d'); //init
+      const ctx = _this.mapLayers.canvasLayerPointer.canvas.getContext('2d'); //init
       if (!ctx) {
         return;
       }
       ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); //clear
-      for (let k = 0; k < _this.totalPoints.length; k++) {
-        let pointsList = _this.totalPoints[k];
+      for (let k = 0; k < _this.trajData.totalPoints.length; k++) {
+        let pointsList = _this.trajData.totalPoints[k];
         if (pointsList.length !== 0) {
           let pixelPart = 0;
           const pixelPartUnit = 40;
@@ -1065,13 +1011,13 @@ export default {
      */
     updateCanvasBack() {
       let _this = this;
-      const ctx = _this.canvasLayerBack.canvas.getContext('2d'); //init
+      const ctx = _this.mapLayers.canvasLayerBack.canvas.getContext('2d'); //init
       if (!ctx) {
         return;
       }
       ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); //clear
-      for (let k = 0; k < _this.totalPoints.length; k++) {
-        let pointsList = _this.totalPoints[k];
+      for (let k = 0; k < _this.trajData.totalPoints.length; k++) {
+        let pointsList = _this.trajData.totalPoints[k];
         if (pointsList.length !== 0) {
           for (let i = 0, len = pointsList.length; i < len - 2; i += 1) {
             //init pixels
@@ -1100,7 +1046,7 @@ export default {
       // if(value > 67) return '#a8d9eb';
       // else if(value > 33) return '#18a6da';
       // else return '#093f9b';
-      if(value > 50) return "#ff8c35";
+      if(value < 50) return "#ff8c35";
       else return "#f9d382"
       // if (value > 50) return "#DC143C";
       // else return "#1abd15";
@@ -1149,69 +1095,7 @@ export default {
       }
       return {aPixel, bPixel}
     },
-    updateCanvasBusVehicle() {
-      let that = this;
-      let _this = this.canvasLayerBusVehicle;
-      if (!_this.zr) {
-        _this.zr = zrender.init(_this.canvas);
-      } else {
-        _this.zr.clear();
-      }
-      _this.zr.resize(); //solve the offset caused by dragging or zooming the map
-      //data prepare Test
-      let points = that.visualVehicle.points;
-      let weights = that.visualVehicle.weights;
-      let infos = that.visualVehicle.vehicleInfos;
-      // let points = [];
-      // let weights = [];
-      // points.push(new BMap.Point(-73.88, 40.88));
-      // points.push(new BMap.Point(-73.88601, 40.880624));
-      // weights.push(30);
-      for (let k = 0; k < weights.length; k += 2) {
-        const pixel = that.map.pointToPixel(points[k + 1]);
-        const lastPixel = that.map.pointToPixel(points[k]);
-        var circle = new zrender.Circle({
-          shape: {
-            cx: pixel.x,
-            cy: pixel.y,
-            r: 10
-          },
-          style: {
-            fill: that.getVehicleColor(weights[k]),
-            stroke: '#faf9f9'//'#2e2d2d'
-          },
-          onclick: function () {
-            that.curVehiclePoint = points[k+1];
-            that.curVehicleInfo = infos[k];
-            that.showDetailWindow();
-            that.setDetailWindowPosition();
-          }
-        });
-        _this.zr.add(circle);
-        // Render arrows according to render pixel distance
-        // Pointer length
-        const pointerLong = 8;
-        const res = that.generateBusVehiclePointer(pointerLong, pixel, lastPixel, 45);
-        const aPixel = res.aPixel; //set arrow point
-        const bPixel = res.bPixel;
-        const midPixel = res.midPixel;
-        var line1 = new zrender.Polyline({
-          shape: {
-            points: [
-              [aPixel.x, aPixel.y],
-              [midPixel.x, midPixel.y],
-              [bPixel.x, bPixel.y],
-            ]
-          },
-          style: {
-            stroke: '#000000',
-            lineWidth: 2,
-          }
-        });
-        _this.zr.add(line1);
-      }
-    },
-    generateBusVehiclePointer(lineLong, pixel, lastPixel, theta) {
+    generateBusVehiclePointer_TwoPixel(lineLong, pixel, lastPixel, theta) {
       const aPixel = {};
       const bPixel = {};
       const midPixel = {};
@@ -1226,48 +1110,14 @@ export default {
       bPixel.y = Math.sin(angle2)*lineLong + midPixel.y;
       return {aPixel, bPixel, midPixel};
     },
-    /**
-     *       let _this = this;
-     const ctx = _this.canvasLayerBusVehicle.canvas.getContext('2d'); //init
-     if (!ctx) {
-        return;
-      }
-     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); //clear
-     //data prepare Test
-     var points = [];
-     var weights = [];
-     var point = new BMap.Point(-73.88601,40.880624);
-     points.push(point);
-     weights.push(20);
-     for(let k = 0; k < points.length; k ++) {
-        var pixel = _this.map.pointToPixel(points[k]);
-        ctx.beginPath();
-        ctx.lineWidth = 2;
-        ctx.arc(pixel.x, pixel.y, 20, 0, Math.PI*2, false);
-        ctx.fillStyle = _this.getVehiclColor(weights);
-        ctx.fill();
-        ctx.stroke()
-      }
-     */
     getVehicleColor(weight) {
-      if (weight > 50) {
-        return 'rgb(60,'+ (180 + (100-weight)) +',60)';
-      }
-      else if (weight > 20) return 'rgb('+ (275 - weight) + ',210,4)';
-      else return 'rgb(200,'+ (50+weight) + ',38)';
-    },
-    async generateVisualVehicle() {
-      let _this = this;
-      let maxLength = _this.trajectories.length;
-      _this.visualVehicle.points = []
-      _this.visualVehicle.weights = []
-      for(let k = 0; k < maxLength; k++) {
-        let tempList = _this.trajectories[k].geometry.coordinates;
-        let i = Math.floor(Math.random()*(tempList.length-2)) + 1;
-        _this.visualVehicle.points.push(new BMap.Point(tempList[i-1][0], tempList[i-1][1]));
-        _this.visualVehicle.points.push (new BMap.Point(tempList[i][0], tempList[i][1]));
-        _this.visualVehicle.weights.push(Math.floor(Math.random()*100));
-      }
+      if(weight > 45) return 'rgb(23,128,31)'
+      else if(weight > 30) return  'rgb(52,186,7)';
+      else if(weight > 20) return 'rgb(114,233,23)';
+      else if(weight > 10) return 'rgb(255,179,22)';
+      // else if (weight > 10) return 'rgb(247,112,42)';
+      else if (weight > 5) return 'rgb(238,75,48)';
+      else return 'rgb(201,28,28)';
     },
     /**
      *
@@ -1282,7 +1132,7 @@ export default {
     },
     setDetailWindowPosition() {
       //calculate the position
-      let curPixel = this.map.pointToPixel(this.curVehiclePoint);
+      let curPixel = this.map.pointToPixel(this.curVehicle.curVehiclePoint);
       let detailWindow = document.getElementById("detailWindow");
       let top = curPixel.y - detailWindow.offsetHeight - 30;
       let left = curPixel.x - detailWindow.offsetWidth / 2;
@@ -1292,8 +1142,39 @@ export default {
     },
     hiddenDetailWindow() {
       this.$refs.detailWindow.style.display = 'none';
-      this.curVehiclePoint = undefined;
-      this.curVehicleInfo = undefined;
+      this.curVehicle.curVehiclePoint = undefined;
+      this.curVehicle.curVehicleInfo = {
+            vehicleId: "",
+            routeId: "",
+            agencyId: "",
+            nextStop: "",
+            speed: 0.0
+      };
+    },
+    dealResponse(response) {
+      this.$message({
+        message: "Get " + response.status + " from server",
+        type: 'error'
+      });
+    },
+    dealError(error) {
+      if(error.response) {
+        this.$message({
+          message: 'Get ' + error.response.status + " from server",
+          type: 'error'
+        });
+      } else if (error.request) {
+        this.$message({
+          message: "Request without response",
+          type: 'error'
+        });
+      } else {
+        this.$message({
+          message: "Request sending failed",
+          type: 'error'
+        })
+      }
+      console.log(error);
     }
   }
 }
@@ -1301,7 +1182,7 @@ export default {
 <style>
 /* The container of BaiduMap must be set width & height. */
 #baiduMap {
-  margin: 0px;
+  margin: 0;
   width: 100%;
   height: 100%;
 }
@@ -1320,7 +1201,7 @@ export default {
 .toggleButton {
   position: absolute;
   margin-top: 45%;
-  padding: 0px !important;
+  padding: 0 !important;
   bottom: 50%;
   height: 50px;
   width: 20px;
@@ -1407,6 +1288,17 @@ img[src="http://api.map.baidu.com/images/iw3.png"]{
   width: 100% !important;
   height: 100% !important;
 }
+#legend {
+  background-color: rgba(219, 219, 219, 0.5);
+  border-radius: 5px;
+  margin: 5px;
+  position: absolute;
+  bottom: 10px;
+  right: 50px;
+  height: 170px;
+  width: 95px;
+  z-index: 10;
+}
 #detailWindow {
   display: none;
   /*width: 390px;*/
@@ -1422,8 +1314,8 @@ img[src="http://api.map.baidu.com/images/iw3.png"]{
   overflow-y: scroll;
   overflow-x: hidden;
   /*margin: 20px;*/
-  padding: 15px 20px 0px 20px;
-  width: 350px;
+  padding: 15px 20px 0 20px;
+  width: 370px;
   height: 95%;;
 }
 #detailTail {
@@ -1431,8 +1323,8 @@ img[src="http://api.map.baidu.com/images/iw3.png"]{
   border-style: solid;
   border-width: 15px 15px 15px 15px;
   border-color: white transparent transparent transparent;
-  width: 0px;
-  height: 0px;
+  width: 0;
+  height: 0;
   position: absolute;
   left: 45%;
   bottom: -30px;
