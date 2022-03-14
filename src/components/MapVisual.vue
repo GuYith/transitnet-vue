@@ -112,13 +112,12 @@
   </el-container>
   </div>
 </template>
-
 <script>
 /* eslint-disable */
-import {mapStyle} from '../../public/map.js';
 import * as zrender from 'zrender';
 import FlipClock from 'kuan-vue-flip-clock';
-import {MP} from '../../public/map.js';
+import {pathStyle, rectStyle} from "../../public/torchDrawer";
+import {MP, getTrajColorByValue, getVehicleColor, arrowPoint,generateBusVehiclePointer, mapVOptions, LEGEND_DATA} from '../../public/utils.js';
 import {CanvasLayer} from "../../public/CanvasLayer.js";
 import BusStay_Chart from "@/components/BusStay_Chart";
 import BusTime_Chart from "@/components/BusTime_Chart";
@@ -147,40 +146,6 @@ export default {
         bearings: [],
         points: [],
         speeds: [],
-      },
-      mapVOptions: {
-        mapv_bus_line_light_green: {
-          strokeStyle: 'rgb(30,200,81,0.7)',
-          shadowColor: 'rgb(32,57,31)',
-          shadowBlur: 3,
-          lineWidth: 5.0,
-          draw: 'simple',
-        },
-        mapv_option_stop: {
-          fillStyle: 'rgba(255, 250, 250, 1)',
-          size: 3,
-          label: {
-            show: true
-          },
-          draw: 'simple',
-        },
-        mapv_option_dot_animation: {
-          zIndex: 3,
-          fillStyle: 'rgba(255, 250, 250, 1)',
-          //coordType: 'bd09mc',
-          globalCompositeOperation: "lighter",
-          size: 1.5,
-          animation: {
-            type: 'time',
-            stepsRange: {
-              start: 0,
-              end: 400
-            },
-            trails: 3,
-            duration: 25,  //update every 8 seconds
-          },
-          draw: 'simple'
-        }
       },
       mapLayers: {
         lineLayer: null,
@@ -225,32 +190,7 @@ export default {
     showLegend() {
       let canvas = this.$refs.mapLegend;
       let zr = zrender.init(canvas);
-      let legendData = [
-        {
-          label: ">=45",
-          color: 'rgb(23,128,31)'
-        },
-        {
-          label: "30-45",
-          color: 'rgb(52,186,7)'
-        },
-        {
-          label: "20-30",
-          color: 'rgb(114,233,23)'
-        },
-        {
-          label: "10-20",
-          color: 'rgb(255,179,22)'
-        },
-        {
-          label: "5-10",
-          color: 'rgb(238,75,48)'
-        },
-        {
-          label: "<=5km/h",
-          color: 'rgb(201,28,28)'
-        }
-      ]
+      let legendData = LEGEND_DATA;
       let interval = 25;
       for (let i = 0, len = legendData.length; i < len; i ++) {
         let circle = new zrender.Circle({
@@ -347,6 +287,28 @@ export default {
         anchor: BMAP_ANCHOR_BOTTOM_RIGHT,
         type: BMAP_NAVIGATION_CONTROL_SMALL
       });
+      //TODO torch drawer
+      const drawer = new BMapLib.DrawingManager(_this.map, {
+        isOpen: false,                          // disable drawing mode
+        enableDrawingTool: true,                // displayOnInit tool bar
+        drawingToolOptions: {
+          anchor: BMAP_ANCHOR_TOP_RIGHT,      // position of the tool bar
+          offset: new BMap.Size(865, 80),        // offset from the position
+          scale: 1.2,
+          drawingModes: [                    // functions on tool bar
+            // BMAP_DRAWING_MARKER,
+            // BMAP_DRAWING_CIRCLE,
+            BMAP_DRAWING_POLYLINE,
+            // BMAP_DRAWING_POLYGON,
+            BMAP_DRAWING_RECTANGLE
+          ]
+        },
+        polylineOptions: pathStyle,
+        rectangleOptions: rectStyle
+      });
+      // drawer.addEventListener("polylinecomplete", lineComplete);
+      // drawer.addEventListener("rectanglecomplete", rectComplete);
+
       _this.listAllRoutesIdOption();
       _this.map.addControl(navigation); //add navigation control to map
       await _this.displayOriginTrips_Canvas(); //canvas Layer for route
@@ -584,7 +546,7 @@ export default {
           let curGeometry = _this.trajData.trajectories[0].geometry;
           let centerPoint = new BMap.Point(curGeometry.coordinates[0][0], curGeometry.coordinates[0][1]);
           _this.map.centerAndZoom(centerPoint, 14);
-          _this.mapLayers.lineLayer = new mapv.baiduMapLayer(_this.map, dataSet, _this.mapVOptions.mapv_bus_line_light_green);
+          _this.mapLayers.lineLayer = new mapv.baiduMapLayer(_this.map, dataSet, mapVOptions.mapv_bus_line_light_green);
 
           let pointsList = [];
           for (let i = 0; i < curGeometry.coordinates.length; i++) {
@@ -626,7 +588,7 @@ export default {
             });
           }
           let dataSet = new mapv.DataSet(_this.trajData.stopData);
-          _this.mapLayers.stopLayer = new mapv.baiduMapLayer(_this.map, dataSet, _this.mapVOptions.mapv_option_stop);
+          _this.mapLayers.stopLayer = new mapv.baiduMapLayer(_this.map, dataSet, mapVOptions.mapv_option_stop);
         } else _this.dealResponse(response);
       }).catch((error) => {
         _this.dealError(error);
@@ -640,7 +602,7 @@ export default {
     displayMapvLineLayer() {
       let _this = this;
       let dataSet = new mapv.DataSet(_this.trajData.trajectories); //set dataSet
-      _this.mapLayers.lineLayer = new mapv.baiduMapLayer(_this.map, dataSet, _this.mapVOptions.mapv_bus_line_light_green); // set the layer
+      _this.mapLayers.lineLayer = new mapv.baiduMapLayer(_this.map, dataSet, mapVOptions.mapv_bus_line_light_green); // set the layer
     },
     /**
      * @description show one route's trajectory
@@ -709,7 +671,7 @@ export default {
             r: 10
           },
           style: {
-            fill: that.getVehicleColor(weights[k]),
+            fill: getVehicleColor(weights[k]),
             stroke: '#faf9f9'//'#2e2d2d'
           },
           onclick: async function () {
@@ -729,7 +691,7 @@ export default {
         // Render arrows according to render pixel distance
         // Pointer length
         const pointerLong = 8;
-        const res = that.generateBusVehiclePointer(pointerLong, pixel, bearings[k], 45);
+        const res = generateBusVehiclePointer(pointerLong, pixel, bearings[k], 45);
         const aPixel = res.aPixel; //set arrow point
         const bPixel = res.bPixel;
         const midPixel = res.midPixel;
@@ -767,22 +729,6 @@ export default {
       }).catch(error=>{
         _this.dealError(error);
       });
-    },
-    generateBusVehiclePointer(lineLong, pixel, bearing, theta) {
-      const aPixel = {};
-      const bPixel = {};
-      const midPixel = {};
-      let angle = bearing + 90;
-      let angle1 = (angle + theta) * Math.PI / 180;
-      let angle2 = (angle - theta) * Math.PI / 180
-      midPixel.x = pixel.x - Math.cos(angle * Math.PI / 180)*lineLong/2;
-      midPixel.y = pixel.y - Math.sin(angle * Math.PI / 180)*lineLong/2;
-      aPixel.x = Math.cos(angle1)*lineLong + midPixel.x;
-      aPixel.x = Math.cos(angle1)*lineLong + midPixel.x;
-      aPixel.y = Math.sin(angle1)*lineLong + midPixel.y;
-      bPixel.x = Math.cos(angle2)*lineLong + midPixel.x;
-      bPixel.y = Math.sin(angle2)*lineLong + midPixel.y;
-      return {aPixel, bPixel, midPixel};
     },
     async updateVehicleData() {
       let _this = this;
@@ -828,38 +774,6 @@ export default {
         _this.dealError(error);
       });
       if(_this.mapLayers.canvasLayerBusVehicle != null) _this.updateCanvasBusVehicle();
-    },
-    calSpeed(curTime, curPoint, lastTime, lastPoint) {
-      if(curTime === lastTime)  return 0;
-      else {
-        let dist = this.calDistance(curPoint, lastPoint);
-        let date1 = new Date(lastTime);
-        let date2 = new Date(curTime);
-        let speed = dist / (date2.getTime() - date1.getTime()) * 1000; // m/s
-        return Math.round(speed * 3.6); //km/h
-      }
-    }
-    ,
-    calDistance(curPoint, lastPoint) {
-      /** 计算两经纬度之间的距离，单位是m
-       * approx distance between two points on earth ellipsoid
-       */
-      function getGreatCircleDistance(lat1,lng1,lat2,lng2){
-        const PI = Math.PI;
-        const EARTH_RADIUS = 6378.137; //km
-        function getRad (d) {
-          return d * PI / 180.0;
-        }
-        let radLat1 = getRad(lat1);
-        let radLat2 = getRad(lat2);
-        let a = radLat1 - radLat2;
-        let b = getRad(lng1) - getRad(lng2);
-        let s = 2*Math.asin(Math.sqrt(Math.pow(Math.sin(a/2),2) + Math.cos(radLat1)*Math.cos(radLat2)*Math.pow(Math.sin(b/2),2)));
-        s = s*EARTH_RADIUS;
-        s = Math.round(s*10000)/10000.0;
-        return s*1000; //m
-      }
-      return getGreatCircleDistance(curPoint.lat, curPoint.lng, lastPoint.lat, lastPoint.lng);
     },
     /**
      * @description start the real time display
@@ -940,8 +854,8 @@ export default {
             const grd = ctx.createLinearGradient(pixel.x, pixel.y, nextPixel.x, nextPixel.y);
             const nowValue = weightList[i]; //value weight
             const nextValue = weightList[i + 1];
-            grd.addColorStop(0, _this.getTrajColorByValue(nowValue));
-            grd.addColorStop(1, _this.getTrajColorByValue(nextValue));
+            grd.addColorStop(0, getTrajColorByValue(nowValue));
+            grd.addColorStop(1, getTrajColorByValue(nextValue));
             ctx.strokeStyle = grd;
             ctx.lineTo(nextPixel.x, nextPixel.y);
             ctx.stroke(); //to draw
@@ -991,8 +905,8 @@ export default {
                   ((nextPixel.y - pixel.y) ** 2)) ** 0.5;
               // Pointer length
               const pointerLong = 4;
-              const aPixel = _this.arrowPoint(pointerLong, midPixel, distance, nextPixel, pixel).aPixel; //set arrow point
-              const bPixel = _this.arrowPoint(pointerLong, midPixel, distance, nextPixel, pixel).bPixel;
+              const aPixel = arrowPoint(pointerLong, midPixel, distance, nextPixel, pixel).aPixel; //set arrow point
+              const bPixel = arrowPoint(pointerLong, midPixel, distance, nextPixel, pixel).bPixel;
               ctx.moveTo(aPixel.x, aPixel.y);
               ctx.lineWidth = 2;
               ctx.strokeStyle = '#eee';
@@ -1033,91 +947,6 @@ export default {
           }
         }
       }
-    },
-    /**
-     * @description set canvas color value
-     * @param value
-     * @returns {string}
-     */
-    getTrajColorByValue(value) {
-      // if(value > 67) return '#bca8eb';
-      // else if(value > 33) return '#61099b';//'#8c18da';
-      // else return '#61099b';
-      // if(value > 67) return '#a8d9eb';
-      // else if(value > 33) return '#18a6da';
-      // else return '#093f9b';
-      if(value < 50) return "#ff8c35";
-      else return "#f9d382"
-      // if (value > 50) return "#DC143C";
-      // else return "#1abd15";
-    },
-    /**
-     * @description set the arrowPoint
-     * @param pointerLong
-     * @param midPixel
-     * @param distance
-     * @param nextPixel
-     * @param pixel
-     * @returns {{bPixel: {}, aPixel: {}}}
-     */
-    arrowPoint(pointerLong, midPixel, distance, nextPixel, pixel) {
-      const aPixel = {}; //the coordinates of arrow endpoint 1
-      const bPixel = {}; //the coordinates of arrow endpoint 2
-      // calculation rules of coordinates
-      // When The next x-coordinate is equal to the last coordinate
-      if (nextPixel.x - pixel.x === 0) {
-        //The next y-coordinate is greater than the last coordinate
-        if (nextPixel.y - pixel.y > 0) {
-          aPixel.x = midPixel.x - pointerLong * 0.5 ** 0.5;
-          aPixel.y = midPixel.y - pointerLong * 0.5 ** 0.5;
-          bPixel.x = midPixel.x + pointerLong * 0.5 ** 0.5;
-          bPixel.y = midPixel.y - pointerLong * 0.5 ** 0.5;
-        }
-        // The next y-coordinate is less than the previous one
-        else if (nextPixel.y - pixel.y < 0) {
-          aPixel.x = midPixel.x - pointerLong * 0.5 ** 0.5;
-          aPixel.y = midPixel.y + pointerLong * 0.5 ** 0.5;
-          bPixel.x = midPixel.x + pointerLong * 0.5 ** 0.5;
-          bPixel.y = midPixel.y + pointerLong * 0.5 ** 0.5;
-        }
-      }
-      // The next X coordinate is not the same as the previous coordinate
-      else {
-        const k0 = (-(2 ** 0.5) * distance * pointerLong + 2 * (nextPixel.y - pixel.y) * midPixel.y) / (2 * (nextPixel.x - pixel.x)) + midPixel.x;
-        const k1 = -((nextPixel.y - pixel.y) / (nextPixel.x - pixel.x));
-        const a = k1 ** 2 + 1;
-        const b = 2 * k1 * (k0 - midPixel.x) - 2 * midPixel.y;
-        const c = (k0 - midPixel.x) ** 2 + midPixel.y ** 2 - pointerLong ** 2;
-        aPixel.y = (-b + (b * b - 4 * a * c) ** 0.5) / (2 * a);
-        bPixel.y = (-b - (b * b - 4 * a * c) ** 0.5) / (2 * a);
-        aPixel.x = k1 * aPixel.y + k0;
-        bPixel.x = k1 * bPixel.y + k0;
-      }
-      return {aPixel, bPixel}
-    },
-    generateBusVehiclePointer_TwoPixel(lineLong, pixel, lastPixel, theta) {
-      const aPixel = {};
-      const bPixel = {};
-      const midPixel = {};
-      let angle = Math.atan2(lastPixel.y - pixel.y, lastPixel.x -pixel.x)*180 / Math.PI;
-      let angle1 = (angle + theta) * Math.PI / 180;
-      let angle2 = (angle - theta) * Math.PI / 180
-      midPixel.x = pixel.x - Math.cos(angle * Math.PI / 180)*lineLong/2;
-      midPixel.y = pixel.y - Math.sin(angle * Math.PI / 180)*lineLong/2;
-      aPixel.x = Math.cos(angle1)*lineLong + midPixel.x;
-      aPixel.y = Math.sin(angle1)*lineLong + midPixel.y;
-      bPixel.x = Math.cos(angle2)*lineLong + midPixel.x;
-      bPixel.y = Math.sin(angle2)*lineLong + midPixel.y;
-      return {aPixel, bPixel, midPixel};
-    },
-    getVehicleColor(weight) {
-      if(weight > 45) return 'rgb(23,128,31)'
-      else if(weight > 30) return  'rgb(52,186,7)';
-      else if(weight > 20) return 'rgb(114,233,23)';
-      else if(weight > 10) return 'rgb(255,179,22)';
-      // else if (weight > 10) return 'rgb(247,112,42)';
-      else if (weight > 5) return 'rgb(238,75,48)';
-      else return 'rgb(201,28,28)';
     },
     /**
      *
@@ -1176,7 +1005,56 @@ export default {
       }
       console.log(error);
     }
-  }
+  },
+  //TODO drawer like torch function
+  // lineComplete(line){
+  //   let _this = this;
+  //   let point = line.getPath()[0];
+  //   let opts = {
+  //     position : point,
+  //   };
+  //   let label = new BMap.Label("path: "+line_polygons.length, opts);
+  //   label.setStyle({
+  //     color : "red",
+  //     fontSize : "15px",
+  //     height : "0px",
+  //     width: "0px"
+  //   });
+  //   _this.map.addOverlay(label);
+  //
+  //   line_label.push(label);
+  //   line_polygons.push(line);
+  //
+  //   clusterize_sim.prepend([_this.toSimLine(line)]);
+  //   clusterize_com.prepend([_this.toComline(line)]);
+  //
+  //   setClickable();
+  //
+  //   counter_line++;
+  // },
+  // rectComplete(rect) {
+  //   let _this = this;
+  //   let point = new BMap.Point((rect.getPath()[0].lng + rect.getPath()[2].lng)/2, (rect.getPath()[0].lat + rect.getPath()[2].lat) / 2);
+  //   let opts = {
+  //     position : point,
+  //   };
+  //   let label = new BMap.Label("window: "+ rect_polygons.length, opts);
+  //   label.setStyle({
+  //     color : "red",
+  //     fontSize : "15px",
+  //     height : "0px",
+  //     width: "0px"
+  //   });
+  //   _this.map.addOverlay(label);
+  //
+  //   rect_label.push(label);
+  //   rect_polygons.push(rect);
+  //   _this.clusterize_com.prepend([toRect(rect)]);
+  //
+  //   _this.setClickable();
+  //
+  //   counter_rect++;
+  // },
 }
 </script>
 <style>
