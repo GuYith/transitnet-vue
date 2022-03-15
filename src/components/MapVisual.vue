@@ -42,6 +42,7 @@
             </el-form-item>
             <el-form-item label="TripId">
               <el-select v-model="curTripId" placeholder="Select TripId" >
+<!--                TODO modify to the shapeIdList(for one route) in select and add a list for trip with Time -->
                 <el-option
                     v-for="item in tripIdOptions"
                     :key="item.tripId"
@@ -83,6 +84,7 @@
           <el-button class="toggleButton" @click="toggleCollapseLeft" :icon="isCollapseLeft ? 'el-icon-d-arrow-right' : 'el-icon-d-arrow-left'"> </el-button>
           <div id="map_container">
             <div id="legend" ref="mapLegend"></div>
+            <el-button id="clearDrawButton" @click="clearAllDraw">Clear Draw</el-button>
             <div id="baiduMap" ></div>
               <div id="detailWindow" ref="detailWindow">
                 <div id="infoWindow">
@@ -116,8 +118,16 @@
 /* eslint-disable */
 import * as zrender from 'zrender';
 import FlipClock from 'kuan-vue-flip-clock';
-import {pathStyle, rectStyle} from "../../public/torchDrawer";
-import {MP, getTrajColorByValue, getVehicleColor, arrowPoint,generateBusVehiclePointer, mapVOptions, LEGEND_DATA} from '../../public/utils.js';
+import {
+  MP,
+  getTrajColorByValue,
+  getVehicleColor,
+  arrowPoint,
+  generateBusVehiclePointer,
+  mapVOptions,
+  LEGEND_DATA,
+  CANVAS_ZINDEX_VEHICLE, CANVAS_ZINDEX_LINE, pathStyle, rectStyle
+} from '../../public/utils.js';
 import {CanvasLayer} from "../../public/CanvasLayer.js";
 import BusStay_Chart from "@/components/BusStay_Chart";
 import BusTime_Chart from "@/components/BusTime_Chart";
@@ -173,6 +183,14 @@ export default {
       },
       realTimeDate: '2022-01-01',
       realTimeTime: '18:00:00',
+      drawerData: {
+        line_polygons: [],
+        line_label: [],
+        rect_polygons: [],
+        rect_label: [],
+        counter_line: 0,
+        counter_rect: 0,
+      }
     }
   },
   async mounted() {
@@ -187,6 +205,42 @@ export default {
   },
   computed: {},
   methods: {
+    /**
+     * @description init the map
+     * 1. init the baidu map component
+     * 2. set the map style
+     * 3. display the origin trajectory
+     */
+    async initMap() {
+      let _this = this;
+      _this.map = new BMap.Map("baiduMap", {
+        enableMapClick: false
+      });
+      _this.map.setMapStyle({style: "light"});
+      _this.map.centerAndZoom(new BMap.Point(-73.88601, 40.880624), 13); //set map center and zoom
+      _this.map.enableScrollWheelZoom(true);
+
+      ["dragging", "dragstart", "dragend", "zoomstart", "zoomend"].forEach(
+          function (item) {
+            _this.map.addEventListener(item, () => {
+              if(_this.$refs.detailWindow.style.display === 'block') {
+                _this.setDetailWindowPosition();
+              }
+            })
+          }
+      )
+
+      const navigation = new BMap.NavigationControl({ //init the navigation
+        anchor: BMAP_ANCHOR_BOTTOM_RIGHT,
+        type: BMAP_NAVIGATION_CONTROL_SMALL
+      });
+      _this.addDrawer();
+      _this.listAllRoutesIdOption();
+      _this.map.addControl(navigation); //add navigation control to map
+      await _this.displayOriginTrips_Canvas(); //canvas Layer for route
+      await _this.displayVehicle_Canvas(); //canvas Layer for busVehicle
+
+    },
     showLegend() {
       let canvas = this.$refs.mapLegend;
       let zr = zrender.init(canvas);
@@ -221,7 +275,6 @@ export default {
     clearTimeSpan() {
       this.timeSpan = [];
       this.clearAll();
-      this.displayOriginTrips_Canvas();
     },
     /**
      * @description toggle asideLeft
@@ -258,42 +311,15 @@ export default {
     getRandomInt(min, max) {
       return Math.floor(Math.random() * (max - min + 1)) + min;
     },
-    /**
-     * @description init the map
-     * 1. init the baidu map component
-     * 2. set the map style
-     * 3. display the origin trajectory
-     */
-    async initMap() {
+    addDrawer() {
       let _this = this;
-      _this.map = new BMap.Map("baiduMap", {
-        enableMapClick: false
-      });
-      _this.map.setMapStyle({style: "light"});
-      _this.map.centerAndZoom(new BMap.Point(-73.88601, 40.880624), 13); //set map center and zoom
-      _this.map.enableScrollWheelZoom(true);
-
-      ["dragging", "dragstart", "dragend", "zoomstart", "zoomend"].forEach(
-          function (item) {
-            _this.map.addEventListener(item, () => {
-              if(_this.$refs.detailWindow.style.display === 'block') {
-                _this.setDetailWindowPosition();
-              }
-            })
-          }
-      )
-
-      const navigation = new BMap.NavigationControl({ //init the navigation
-        anchor: BMAP_ANCHOR_BOTTOM_RIGHT,
-        type: BMAP_NAVIGATION_CONTROL_SMALL
-      });
       //TODO torch drawer
       const drawer = new BMapLib.DrawingManager(_this.map, {
         isOpen: false,                          // disable drawing mode
         enableDrawingTool: true,                // displayOnInit tool bar
         drawingToolOptions: {
-          anchor: BMAP_ANCHOR_TOP_RIGHT,      // position of the tool bar
-          offset: new BMap.Size(865, 80),        // offset from the position
+          anchor: BMAP_ANCHOR_TOP_LEFT,      // position of the tool bar
+          offset: new BMap.Size(5, 5),        // offset from the position
           scale: 1.2,
           drawingModes: [                    // functions on tool bar
             // BMAP_DRAWING_MARKER,
@@ -306,13 +332,45 @@ export default {
         polylineOptions: pathStyle,
         rectangleOptions: rectStyle
       });
-      // drawer.addEventListener("polylinecomplete", lineComplete);
-      // drawer.addEventListener("rectanglecomplete", rectComplete);
 
-      _this.listAllRoutesIdOption();
-      _this.map.addControl(navigation); //add navigation control to map
-      await _this.displayOriginTrips_Canvas(); //canvas Layer for route
-      await _this.displayVehicle_Canvas(); //canvas Layer for busVehicle
+      let lineComplete = function (line){
+            let point = line.getPath()[0];
+            let opts = {
+              position : point,
+            };
+            let label = new BMap.Label("path: "+_this.drawerData.line_polygons.length, opts);
+            label.setStyle({
+              color : "red",
+              fontSize : "15px",
+              height : "0px",
+              width: "0px"
+            });
+            _this.map.addOverlay(label);
+            _this.drawerData.line_label.push(label);
+            _this.drawerData.line_polygons.push(line);
+            _this.drawerData.counter_line++;
+            //drawline API
+      };
+      let rectComplete = function (rect) {
+        let point = new BMap.Point((rect.getPath()[0].lng + rect.getPath()[2].lng)/2, (rect.getPath()[0].lat + rect.getPath()[2].lat) / 2);
+        let opts = {
+          position : point,
+        };
+        let label = new BMap.Label("window: "+ _this.drawerData.rect_polygons.length, opts);
+        label.setStyle({
+          color : "red",
+          fontSize : "15px",
+          height : "0px",
+          width: "0px"
+        });
+        _this.map.addOverlay(label);
+        _this.drawerData.rect_label.push(label);
+        _this.drawerData.rect_polygons.push(rect);
+        _this.drawerData.counter_rect++;
+        //drawRect API
+      };
+      drawer.addEventListener("polylinecomplete", lineComplete);
+      drawer.addEventListener("rectanglecomplete", rectComplete);
     },
     async displayVehicle_Canvas() {
       this.$message({
@@ -325,7 +383,7 @@ export default {
       _this.mapLayers.canvasLayerBusVehicle = new CanvasLayer({
         map: _this.map,
         update: _this.updateCanvasBusVehicle,
-        zIndex: 5 //make sure the layer's index is high enough to trigger the mouse methods
+        zIndex: CANVAS_ZINDEX_VEHICLE //make sure the layer's index is high enough to trigger the mouse methods
       });
     },
     /**
@@ -375,7 +433,8 @@ export default {
 
       _this.mapLayers.canvasLayerLine = new CanvasLayer({
         map: _this.map,
-        update: _this.updateCanvasLine
+        update: _this.updateCanvasLine,
+        zIndex: CANVAS_ZINDEX_LINE
       });
 
     },
@@ -410,7 +469,7 @@ export default {
           //check the routes
           if (routes.length === 0) {
             this.$message({
-              message: 'The Bus Service List In This TimeSpan is Empty',
+              message: 'The bus service list in this timeSpan is empty',
               type: 'warning'
             });
             return;
@@ -433,6 +492,12 @@ export default {
       this.$axios.get('/routes').then(response => {
         if(response && response.status === 200)
           _this.routeIdOptions = response.data;
+          if(_this.routeIdOptions.length === 0) {
+            _this.$message({
+              message: 'The bus route list is empty',
+              type: "warning"
+            });
+          }
         else _this.dealResponse(response);
       }).catch(error => {
         _this.dealError(error);
@@ -449,7 +514,15 @@ export default {
        */
       this.$axios.get('/routes/timespan?startDate=' + _this.timeSpan[0].toLocaleDateString().replaceAll('/', '-')
           + '&endDate=' + _this.timeSpan[1].toLocaleDateString().replaceAll('/', '-')).then(response => {
-            if(response && response.status === 200)  _this.routeIdOptions = response.data;
+            if(response && response.status === 200) {
+              _this.routeIdOptions = response.data;
+              if(_this.routeIdOptions.length === 0) {
+                _this.$message({
+                  message: 'The bus route list for this timeSpan is empty',
+                  type: "warning"
+                });
+              }
+            }
             else _this.dealResponse(response);
       }).catch(error =>{
         _this.dealError(error);
@@ -460,6 +533,11 @@ export default {
      * by timespan or not
      */
     listTrips() {
+      if(this.curRouteId !== "")
+        this.$message({
+          message: 'Filter tripList by routeId',
+          type: 'success'
+        });
       if (this.timeSpan.length === 0) { // if set timespan
         this.listTripsByRouteId();
       } else { //if not set timespan
@@ -476,7 +554,15 @@ export default {
        * @dataType List<TripsEntity>
        */
       this.$axios.get('/trips?routeId=' + _this.curRouteId).then(response => {
-        if(response && response.status === 200) _this.tripIdOptions = response.data;
+        if(response && response.status === 200) {
+          _this.tripIdOptions = response.data;
+          if(_this.tripIdOptions.length === 0) {
+            _this.$message({
+              message: 'The bus trip list for this route is empty',
+              type: "warning"
+            });
+          }
+        }
         else _this.dealResponse(response);
       }).catch(error => {
         _this.dealError(error);
@@ -494,7 +580,15 @@ export default {
       this.$axios.get('/trips/timespan?routeId=' + _this.curRouteId
           + '&startDate=' + _this.timeSpan[0].toLocaleDateString().replaceAll('/', '-')
           + '&endDate=' + _this.timeSpan[1].toLocaleDateString().replaceAll('/', '-')).then(response => {
-            if(response && response.status === 200) _this.tripIdOptions = response.data;
+            if(response && response.status === 200) {
+              _this.tripIdOptions = response.data;
+              if(_this.tripIdOptions.length === 0) {
+                _this.$message({
+                  message: 'The bus trip list for this route and timespan is empty',
+                  type: "warning"
+                });
+              }
+            }
             else _this.dealResponse(response);
       }).catch(error => {
         _this.dealError(error);
@@ -503,21 +597,21 @@ export default {
     /**
      * @description get one trajectory by routeId and tripId
      */
-    displayOneTrajectory() {
+    async displayOneTrajectory() {
       let _this = this;
       _this.trajData.trajectories = [];
       _this.trajData.totalPoints = [];
       _this.trajData.stopData = [];
       //Warning message
       if (_this.curRouteId === "") {
-        this.$message({
+        await this.$message({
           message: 'Please Check the RouteId is Selected',
           type: 'warning'
         });
         return;
       }
       if (_this.curTripId === "") {
-        this.$message({
+        await this.$message({
           message: 'Please Check the TripId is Selected',
           type: 'warning'
         });
@@ -527,12 +621,12 @@ export default {
        * @get, url = '/mapv/?routeId={routeId}&tripId={tripId}'
        * @dataType RoutesVo
        */
-      this.$axios.get('/mapv/?routeId=' + _this.curRouteId + "&tripId=" + _this.curTripId).then(response => {
+       this.$axios.get('/mapv/?routeId=' + _this.curRouteId + "&tripId=" + _this.curTripId).then(response => {
         if (response && response.status === 200) {
           _this.trajData.trajectories.push(response.data.trajJsonModel);
           //warning message
           if (_this.trajData.trajectories[0].geometry.coordinates.length === 0) {
-            this.$message({
+             this.$message({
               message: 'Please Check Matched RouteId and TripId are selected',
               type: 'error'
             });
@@ -557,15 +651,18 @@ export default {
           //init CanvasLayers
           // _this.mapLayers.canvasLayerBack = new CanvasLayer({
           //   map: _this.map,
-          //   update: _this.updateCanvasBack
+          //   update: _this.updateCanvasBack,
+          //   zIndex: CANVAS_ZINDEX_LINE-1,
           // });
           // _this.mapLayers.canvasLayerLine = new CanvasLayer({
           //   map: _this.map,
           //   update: _this.updateCanvasLine
+          //   zIndex: CANVAS_ZINDEX_LINE
           // });
           _this.mapLayers.canvasLayerPointer = new CanvasLayer({
             map: _this.map,
-            update: _this.updateCanvasPointer
+            update: _this.updateCanvasPointer,
+            zIndex: CANVAS_ZINDEX_LINE + 1
           });
         } else _this.dealResponse(response);
       }).catch((error) => {
@@ -609,14 +706,14 @@ export default {
      * 1. clear the map
      * 2. show the trajectory
      */
-    showOneTrajectory() {
-      this.$message({
+    async showOneTrajectory() {
+      await this.$message({
         message: "Clear and Stop the real-time bus data update",
         type: "warning"
       });
       if(this.visualVehicles.vehicleIds.length !== 0) {
-        this.clearDisplayVehicles();
-        this.stopDisplayVehicles();
+        await this.clearDisplayVehicles();
+        await this.stopDisplayVehicles();
       }
       this.clearAll();
       this.displayOneTrajectory();
@@ -626,7 +723,13 @@ export default {
      */
     clearAll() {
       let _this = this;
-      _this.map.clearOverlays();
+      let overlays = _this.map.getOverlays();
+      for(let i = 0; i < overlays.length; i++) {
+        let tempOL = overlays[i];
+        console.log(tempOL.toString());
+        if(tempOL.toString() === "[object Overlay]")
+          _this.map.removeOverlay(tempOL);
+      }
       if (_this.mapLayers.lineLayer != null) {
         _this.mapLayers.lineLayer.destroy();
         _this.mapLayers.lineLayer = null;
@@ -800,13 +903,13 @@ export default {
     /**
      * @description stop the real time display
      */
-    stopDisplayVehicles() {
-      this.$message({
+    async stopDisplayVehicles() {
+      await this.$message({
         message: 'Stop real-time bus data updates',
         type: 'warning'
       });
       if(this.timer === null) {
-        this.$message({
+        await this.$message({
           message: 'Real-time bus data update has stopped',
           type: 'error'
         });
@@ -815,8 +918,8 @@ export default {
       clearInterval(this.timer);
       this.timer = null;
     },
-    clearDisplayVehicles() {
-      this.$message({
+    async clearDisplayVehicles() {
+      await this.$message({
         message: 'Bus point on the map is clearing, please wait',
         type: 'warning'
       });
@@ -1004,57 +1107,27 @@ export default {
         })
       }
       console.log(error);
-    }
-  },
-  //TODO drawer like torch function
-  // lineComplete(line){
-  //   let _this = this;
-  //   let point = line.getPath()[0];
-  //   let opts = {
-  //     position : point,
-  //   };
-  //   let label = new BMap.Label("path: "+line_polygons.length, opts);
-  //   label.setStyle({
-  //     color : "red",
-  //     fontSize : "15px",
-  //     height : "0px",
-  //     width: "0px"
-  //   });
-  //   _this.map.addOverlay(label);
-  //
-  //   line_label.push(label);
-  //   line_polygons.push(line);
-  //
-  //   clusterize_sim.prepend([_this.toSimLine(line)]);
-  //   clusterize_com.prepend([_this.toComline(line)]);
-  //
-  //   setClickable();
-  //
-  //   counter_line++;
-  // },
-  // rectComplete(rect) {
-  //   let _this = this;
-  //   let point = new BMap.Point((rect.getPath()[0].lng + rect.getPath()[2].lng)/2, (rect.getPath()[0].lat + rect.getPath()[2].lat) / 2);
-  //   let opts = {
-  //     position : point,
-  //   };
-  //   let label = new BMap.Label("window: "+ rect_polygons.length, opts);
-  //   label.setStyle({
-  //     color : "red",
-  //     fontSize : "15px",
-  //     height : "0px",
-  //     width: "0px"
-  //   });
-  //   _this.map.addOverlay(label);
-  //
-  //   rect_label.push(label);
-  //   rect_polygons.push(rect);
-  //   _this.clusterize_com.prepend([toRect(rect)]);
-  //
-  //   _this.setClickable();
-  //
-  //   counter_rect++;
-  // },
+    },
+    //TODO drawer like torch function
+    clearAllDraw() {
+      let _this = this;
+      _this.drawerData = {
+        line_polygons: [],
+        line_label: [],
+        rect_polygons: [],
+        rect_label: [],
+        counter_line: 0,
+        counter_rect: 0,
+        overlayIdx: [],
+      }
+      let overlays = _this.map.getOverlays();
+      for (let i = 0; i < overlays.length; i++) {
+        let tempOL = overlays[i];
+        if(tempOL.toString() === "[object Polygon]" ||  tempOL.toString() === "[object Label]" || tempOL.toString() === "[object Polyline]" )
+          _this.map.removeOverlay(tempOL);
+      }
+    },
+  }
 }
 </script>
 <style>
@@ -1215,6 +1288,13 @@ img[src="http://api.map.baidu.com/images/iw3.png"]{
   font-size: 12px;
 }
 .anchorBL{display:none;}
+
+#clearDrawButton {
+  position: absolute;
+  left: 280px;
+  top: 20px;
+  z-index: 10;
+}
 </style>
 
 

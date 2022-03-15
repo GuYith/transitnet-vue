@@ -32,6 +32,9 @@ export const mapVOptions = {
         draw: 'simple'
     }
 }
+export const CANVAS_ZINDEX_VEHICLE = 7
+export const CANVAS_ZINDEX_LINE = 4
+export const DRAW_ZINDEX = 12
 export const LEGEND_DATA = [
         {
             label: ">=45",
@@ -207,3 +210,32 @@ export function generateBusVehiclePointer(lineLong, pixel, bearing, theta) {
     bPixel.y = Math.sin(angle2)*lineLong + midPixel.y;
     return {aPixel, bPixel, midPixel};
 }
+
+// for remember current state
+let counter_line = 0;
+let counter_st = 0;
+let counter_rect = 0;
+
+let line_label = [];
+let line_polygons = [];
+let rect_label = [];
+let rect_polygons = [];
+
+// baidu map drawing options
+let draw_color ="rgb(60,60,60)";
+export const pathStyle = {
+    strokeColor: draw_color,
+    strokeWeight: 3,             // width of the stroke
+    strokeOpacity: 0.8,
+    strokeStyle: "white",        // solid or dashed
+    zIndex: DRAW_ZINDEX
+};
+
+export const rectStyle = {
+    strokeColor: draw_color,
+    fillColor: draw_color,
+    strokeOpacity: 0.1,
+    fillOpacity: 0.3,
+    strokeStyle: "solid",
+    zIndex: DRAW_ZINDEX
+};
