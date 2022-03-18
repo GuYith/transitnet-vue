@@ -188,8 +188,13 @@ export function getTrajColorByValue(value) {
     // if(value > 67) return '#a8d9eb';
     // else if(value > 33) return '#18a6da';
     // else return '#093f9b';
-    if(value < 50) return "#ff8c35";
-    else return "#f9d382"
+    if(value == 0) return "#606060";
+    else if(value < 10) return "#e0670b";
+    else if(value < 20) return "#f68d4c";
+    else if(value < 30) return "#ffb655"
+    else {
+        return "#ffe779";
+    }
     // if (value > 50) return "#DC143C";
     // else return "#1abd15";
 }

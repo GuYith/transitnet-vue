@@ -6,7 +6,7 @@
         <el-tab-pane label="RealTime Panel" name="first">
           <el-form>
             <el-form-item label="Date">
-              <el-date-picker v-model="realTimeDate"  type="date"  placeholder="Select Date">
+              <el-date-picker v-model="realTimeDatePick"  type="date"  placeholder="Select Date" @change="updataVisualData">
               </el-date-picker>
             </el-form-item>
             <el-form-item label="Time"> Real-time bus data will update over time </el-form-item>
@@ -97,7 +97,7 @@
           <el-button id = 'toggleRight' class="toggleButton" @click="toggleCollapseRight" :icon="isCollapseRight ? 'el-icon-d-arrow-left' : 'el-icon-d-arrow-right'"> </el-button>
         </el-main>
         <el-aside :width="isCollapseRight ? '0px':'350px'" id = "asideRight">
-          <BusTime_Chart></BusTime_Chart>
+          <BusTime_Chart v-bind:real-time-date = "realTimeDate" ref="arrivalTimeChart"></BusTime_Chart>
         </el-aside>
       </el-container>
       <el-footer height="260px">
@@ -182,6 +182,7 @@ export default {
         curVehicleSpeedList:[],
       },
       realTimeDate: '2022-01-01',
+      realTimeDatePick: '2022-01-01',
       realTimeTime: '18:00:00',
       drawerData: {
         line_polygons: [],
@@ -237,9 +238,9 @@ export default {
       _this.addDrawer();
       _this.listAllRoutesIdOption();
       _this.map.addControl(navigation); //add navigation control to map
-      await _this.displayOriginTrips_Canvas(); //canvas Layer for route
+      // await _this.displayOriginTrips_Canvas(); //canvas Layer for route
+      await _this.displayRouteShapeAndSpeed_Canvas();
       await _this.displayVehicle_Canvas(); //canvas Layer for busVehicle
-
     },
     showLegend() {
       let canvas = this.$refs.mapLegend;
@@ -313,7 +314,6 @@ export default {
     },
     addDrawer() {
       let _this = this;
-      //TODO torch drawer
       const drawer = new BMapLib.DrawingManager(_this.map, {
         isOpen: false,                          // disable drawing mode
         enableDrawingTool: true,                // displayOnInit tool bar
@@ -384,6 +384,56 @@ export default {
         map: _this.map,
         update: _this.updateCanvasBusVehicle,
         zIndex: CANVAS_ZINDEX_VEHICLE //make sure the layer's index is high enough to trigger the mouse methods
+      });
+    },
+    async displayRouteShapeAndSpeed_Canvas() {
+      this.$message({
+        message: 'Loading the routes',
+        type: 'success'
+      });
+      let _this = this;
+      let allShapeList = [];
+      _this.trajData.trajectories = [];
+      _this.trajData.totalPoints = [];
+      _this.trajData.weights = [];
+      await this.$axios.get('/routes/speed').then(response => {
+        if (response && response.status === 200) {
+          allShapeList = response.data;
+          //Foreach shape
+          allShapeList.forEach(shape => {
+            let pointsList = [];
+            let speedList = [];
+            let splitTraj = shape.trajJsonModels;
+            var coordinatesList = [];
+            let speedIdx = 0;
+            splitTraj.forEach(traj => {
+              let tempList = traj.geometry.coordinates;
+              coordinatesList = coordinatesList.concat(tempList);
+              for (let i = 0; i < tempList.length; i++) {
+                let bp = new BMap.Point(tempList[i][0], tempList[i][1]);
+                speedList.push(shape.speeds[speedIdx]);
+                pointsList.push(bp);
+              }
+            })
+            var trajSum = {
+              geometry: {
+                type: 'LineString',
+                coordinates: coordinatesList
+              }
+            };
+            _this.trajData.trajectories.push(trajSum);
+            _this.trajData.totalPoints.push(pointsList);
+            _this.trajData.weights.push(speedList);
+          });
+        } else _this.dealResponse(response);
+      }).catch(error => {
+        _this.dealError(error);
+      });
+
+      _this.mapLayers.canvasLayerLine = new CanvasLayer({
+        map: _this.map,
+        update: _this.updateCanvasLine,
+        zIndex: CANVAS_ZINDEX_LINE
       });
     },
     /**
@@ -490,7 +540,7 @@ export default {
        * @dataType List<RoutesEntity>
        */
       this.$axios.get('/routes').then(response => {
-        if(response && response.status === 200)
+        if(response && response.status === 200) {
           _this.routeIdOptions = response.data;
           if(_this.routeIdOptions.length === 0) {
             _this.$message({
@@ -498,7 +548,7 @@ export default {
               type: "warning"
             });
           }
-        else _this.dealResponse(response);
+        } else _this.dealResponse(response);
       }).catch(error => {
         _this.dealError(error);
       });
@@ -522,8 +572,7 @@ export default {
                   type: "warning"
                 });
               }
-            }
-            else _this.dealResponse(response);
+            } else _this.dealResponse(response);
       }).catch(error =>{
         _this.dealError(error);
       });
@@ -562,8 +611,7 @@ export default {
               type: "warning"
             });
           }
-        }
-        else _this.dealResponse(response);
+        } else _this.dealResponse(response);
       }).catch(error => {
         _this.dealError(error);
       });
@@ -588,8 +636,7 @@ export default {
                   type: "warning"
                 });
               }
-            }
-            else _this.dealResponse(response);
+            } else _this.dealResponse(response);
       }).catch(error => {
         _this.dealError(error);
       });
@@ -1108,7 +1155,6 @@ export default {
       }
       console.log(error);
     },
-    //TODO drawer like torch function
     clearAllDraw() {
       let _this = this;
       _this.drawerData = {
@@ -1127,6 +1173,11 @@ export default {
           _this.map.removeOverlay(tempOL);
       }
     },
+    async updataVisualData() {
+      let _this = this;
+      _this.realTimeDate = _this.realTimeDatePick.toLocaleDateString().replaceAll('/', '-')
+      await _this.$refs.arrivalTimeChart.updateArrivalTimeChartData(_this.realTimeDate);
+    }
   }
 }
 </script>

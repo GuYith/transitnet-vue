@@ -8,7 +8,7 @@
     </el-descriptions>
     <div style="width: 370px; height: 100px" ref="busSpeed"></div>
   </div>
-<!--TODO compare oneRoute different time-->
+<!--TODO compare oneRoute different time, show more details-->
 </template>
 
 <script>
