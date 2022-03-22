@@ -3,7 +3,7 @@
   <el-container>
     <el-aside :width="isCollapseLeft ? '0px':'350px'" id = "asideLeft">
       <el-tabs v-model="activeName" @tab-click="handleClick">
-        <el-tab-pane label="RealTime Panel" name="first">
+        <el-tab-pane label="Real-time Analysis Panel" name="first">
           <el-form>
             <el-form-item label="Date">
               <el-date-picker v-model="realTimeDatePick"  type="date"  placeholder="Select Date" @change="updataVisualData">
@@ -18,9 +18,40 @@
               <el-button @click="stopDisplayVehicles">stop</el-button>
               <el-button @click="clearDisplayVehicles">clear</el-button>
             </el-form-item>
+            <el-form-item id="emphasizeText">
+              Select and Compare Routes or Trips
+            </el-form-item>
+            <el-form-item label="Select Routes:"> count: {{realTimeRouteOptions.length}}</el-form-item>
+            <el-select v-model="selectedRouteList" multiple placeholder="Please select" multiple-limit=5>
+              <el-option
+                  v-for="item in realTimeRouteOptions"
+                  :key="item"
+                  :label="item"
+                  :value="item">
+              </el-option>
+            </el-select>
+            <el-button @click="submitRoutes" class="submitButton">Submit</el-button>
+            <el-form-item label="Select Trips:"> count: {{realTimeTripOptions.length}} </el-form-item>
+            <el-select v-model="realTimeRouteId" placeholder="Select RouteId" @change="getRealTimeTripOptions">
+              <el-option
+                  v-for="item in realTimeRouteOptions"
+                  :key="item"
+                  :label="item"
+                  :value="item">
+              </el-option>
+            </el-select>
+            <el-select v-model="selectedTripList" multiple placeholder="Please select" multiple-limit=5>
+              <el-option
+                  v-for="item in realTimeTripOptions"
+                  :key="item"
+                  :label="item"
+                  :value="item">
+              </el-option>
+            </el-select>
+            <el-button @click="submitTrips" class="submitButton">Submit</el-button>
           </el-form>
         </el-tab-pane>
-        <el-tab-pane label="Routes Analysis Panel" name="second">
+        <el-tab-pane label="Static Analysis Panel" name="second">
           <el-form label-width="30px" :label-position="labelPosition" id="form">
             <el-form-item label="Time">
 <!--              TODO 设置默认的时间，如107，所有的显示按照这个日期来-->
@@ -106,7 +137,9 @@
 <!--            <BusSpeed_Chart></BusSpeed_Chart>-->
 <!--          </div>-->
           <div style="width: 100%; height: 260px">
-            <BusStay_Chart></BusStay_Chart>
+<!--            TODO color improve-->
+            <BusRoute_Chart ref="routeChart"></BusRoute_Chart>
+            <BusTrip_Chart ref="tripChart"></BusTrip_Chart>
           </div>
         </el-container>
       </el-footer>
@@ -129,12 +162,13 @@ import {
   CANVAS_ZINDEX_VEHICLE, CANVAS_ZINDEX_LINE, pathStyle, rectStyle
 } from '../../public/utils.js';
 import {CanvasLayer} from "../../public/CanvasLayer.js";
-import BusStay_Chart from "@/components/BusStay_Chart";
+import BusRoute_Chart from "@/components/BusRoute_Chart";
 import BusTime_Chart from "@/components/BusTime_Chart";
 import BusSpeed_Chart from "@/components/BusSpeed_Chart";
+import BusTrip_Chart from "@/components/BusTrip_Chart"
 export default {
   name: "MapVisual",
-  components: {FlipClock, BusStay_Chart, BusTime_Chart, BusSpeed_Chart},
+  components: {BusTrip_Chart, FlipClock, BusRoute_Chart, BusTime_Chart, BusSpeed_Chart},
   data() {
     return {
       ak: 'wS6oFNUtxQkjV7NsMd5iyNn2ydw2XlmE',
@@ -191,7 +225,14 @@ export default {
         rect_label: [],
         counter_line: 0,
         counter_rect: 0,
-      }
+      },
+      realTimeRouteOptions:[],
+      realTimeTripOptions:[],
+      selectedRouteList:[],
+      selectedTripList:[],
+      routeSpeedList: [],
+      tripSpeedList: [],
+      realTimeRouteId: "",
     }
   },
   async mounted() {
@@ -199,6 +240,7 @@ export default {
     await MP(_this.ak);
     _this.$nextTick(() => {
       setTimeout(() => {
+        _this.getRealTimeOptions();
         _this.initMap();
       }, 500);
     });
@@ -311,6 +353,36 @@ export default {
      */
     getRandomInt(min, max) {
       return Math.floor(Math.random() * (max - min + 1)) + min;
+    },
+    getRealTimeOptions() {
+      this.getRealTimeRouteOptions();
+    },
+    getRealTimeRouteOptions() {
+      let _this = this;
+      this.$axios.get("/realTime/routeOptions/?date=" + _this.realTimeDate).then(response=>{
+        if(response && response.status === 200) {
+          _this.realTimeRouteOptions = response.data;
+        }else _this.dealResponse(response);
+      }).catch(error=>{
+        _this.dealError(error);
+      })
+    },
+    getRealTimeTripOptions() {
+      let _this = this;
+      if(_this.realTimeRouteId === "") {
+        _this.$message({
+          message: "Please Check RouteId is selected",
+          type: "error"
+        })
+        return ;
+      }
+      this.$axios.get("/realTime/tripOptions/?routeId=" + _this.realTimeRouteId + "&date=" + _this.realTimeDate).then(response=>{
+        if(response && response.status === 200) {
+          _this.realTimeTripOptions = response.data;
+        }else _this.dealResponse(response);
+      }).catch(error=>{
+        _this.dealError(error);
+      })
     },
     addDrawer() {
       let _this = this;
@@ -1177,6 +1249,14 @@ export default {
       let _this = this;
       _this.realTimeDate = _this.realTimeDatePick.toLocaleDateString().replaceAll('/', '-')
       await _this.$refs.arrivalTimeChart.updateArrivalTimeChartData(_this.realTimeDate);
+    },
+    submitRoutes() {
+      let _this = this;
+      _this.$refs.routeChart.updateRouteChart(_this.selectedRouteList, _this.realTimeDate);
+    },
+    submitTrips() {
+      let _this = this;
+      _this.$refs.tripChart.updateTripChart(_this.selectedTripList, _this.realTimeDate);
     }
   }
 }
@@ -1345,6 +1425,13 @@ img[src="http://api.map.baidu.com/images/iw3.png"]{
   left: 280px;
   top: 20px;
   z-index: 10;
+}
+.submitButton {
+  margin-left: 20px !important;
+}
+#emphasizeText .el-form-item__content{
+  font-weight: bold;
+  font-size: 16px !important;
 }
 </style>
 

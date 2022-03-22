@@ -7,6 +7,7 @@
       <el-descriptions-item label="speed">{{ curVehicle.curVehicleInfo.speed }} km/h</el-descriptions-item>
     </el-descriptions>
     <div style="width: 370px; height: 100px" ref="busSpeed"></div>
+<!--TODO 加入当前轨迹的查看-->
   </div>
 <!--TODO compare oneRoute different time, show more details-->
 </template>
