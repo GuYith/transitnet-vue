@@ -3,7 +3,7 @@ export const mapVOptions = {
         strokeStyle: 'rgb(30,200,81,0.7)',
             shadowColor: 'rgb(32,57,31)',
             shadowBlur: 3,
-            lineWidth: 5.0,
+            lineWidth: 1.5,
             draw: 'simple',
     },
     mapv_option_stop: {
@@ -12,7 +12,12 @@ export const mapVOptions = {
             label: {
             show: true
         },
+        strokeStyle: 'rgba(0,0,0,1)',
+        lineWidth: 1,
         draw: 'simple',
+        methods: {
+            mousemove: {}
+        }
     },
     mapv_option_dot_animation: {
         zIndex: 3,
@@ -35,7 +40,7 @@ export const mapVOptions = {
 export const CANVAS_ZINDEX_VEHICLE = 7
 export const CANVAS_ZINDEX_LINE = 4
 export const DRAW_ZINDEX = 12
-export const LEGEND_DATA = [
+export const LEGEND_DATA1 = [
         {
             label: ">=45",
             color: 'rgb(23,128,31)'
@@ -61,7 +66,28 @@ export const LEGEND_DATA = [
             color: 'rgb(201,28,28)'
         }
     ]
-
+export const LEGEND_DATA2 = [
+    {
+        label: "None",
+        color: "#606060"
+    },
+    {
+        label: "10",
+        color: "#e0670b"
+    },
+    {
+        label: "20",
+        color: "#f68d4c"
+    },
+    {
+        label: "30",
+        color: "#ffb655"
+    },
+    {
+        label: ">=30km/h",
+        color: "#ffe779"
+    }
+]
 export function MP(ak) {
     return new Promise(function (resolve, reject) {
         window.onload = function () {
@@ -244,3 +270,13 @@ export const rectStyle = {
     strokeStyle: "solid",
     zIndex: DRAW_ZINDEX
 };
+
+export  function getPixelRatio(context) {
+    var backingStore = context.backingStorePixelRatio ||
+        context.webkitBackingStorePixelRatio ||
+        context.mozBackingStorePixelRatio ||
+        context.msBackingStorePixelRatio ||
+        context.oBackingStorePixelRatio ||
+        context.backingStorePixelRatio || 1;
+    return (window.devicePixelRatio || 1) / backingStore;
+}

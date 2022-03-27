@@ -26,17 +26,12 @@ echarts.use([
   UniversalTransition
 ]);
 const colorList = [
-  'rgba(61,138,52,0.1)',
-  'rgba(36,189,21,0.1)',
-  'rgba(83,172,11,0.1)',
-  'rgba(52,138,85,0.1)',
-  'rgba(24,142,79,0.1)',
-  'rgba(62,254,43,0.1)',
-  'rgba(23,143,115,0.1)',
-  'rgba(7,130,165,0.1)',
-  'rgba(14,85,136,0.1)',
-  'rgba(231,196,53,0.1)',
-  'rgba(33,80,28,0.1)',
+  "rgba(106,156,135,0.2)",
+  "rgba(103, 180, 202,0.2)",
+  "rgb(88,136,103,0.2)",
+  "rgba(135,159,81,0.2)",
+  "rgba(166,165,36,0.2)",
+  "rgb(55,147,59,0.2)",
 ]
 export default {
   name: "BusTrip_Chart.vue",
@@ -99,6 +94,7 @@ export default {
         legend: {
           data: _this.tripsId,
           top: 20,
+          left: 25
         },
         toolbox: {
           feature: {
@@ -142,7 +138,6 @@ export default {
       _this.BusTrip_Chart.hideLoading();
       option && _this.BusTrip_Chart.setOption(option);
     },
-    //TODO trip legend show problem
     async tripDataPrepare(tripList, date) {
       let _this = this;
       if(tripList.length > 0) {

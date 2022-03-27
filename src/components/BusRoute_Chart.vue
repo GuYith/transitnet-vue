@@ -1,7 +1,6 @@
 <template>
     <div id="BusRoute_Chart"></div>
 </template>
-<!--TODO compare different routes stay time -->
 <script>
 import * as echarts from 'echarts/core';
 import {
@@ -26,17 +25,23 @@ echarts.use([
   UniversalTransition
 ]);
 const colorList = [
-  'rgba(61,138,52,0.1)',
-  'rgba(36,189,21,0.1)',
-  'rgba(83,172,11,0.1)',
-  'rgba(52,138,85,0.1)',
-  'rgba(24,142,79,0.1)',
-  'rgba(62,254,43,0.1)',
-  'rgba(23,143,115,0.1)',
-  'rgba(7,130,165,0.1)',
-  'rgba(14,85,136,0.1)',
-  'rgba(231,196,53,0.1)',
-  'rgba(33,80,28,0.1)',
+  'rgba(227,134,82,0.2)',
+  'rgba(187,98,26,0.2)',
+  'rgba(219, 107, 113,0.2)',
+  'rgba(213, 157, 183,0.2)',
+  'rgba(149, 112, 167,0.2)',
+  'rgba(206, 78, 18,0.2)',
+  // 'rgba(61,138,52,0.1)',
+  // 'rgba(36,189,21,0.1)',
+  // 'rgba(83,172,11,0.1)',
+  // 'rgba(52,138,85,0.1)',
+  // 'rgba(24,142,79,0.1)',
+  // 'rgba(62,254,43,0.1)',
+  // 'rgba(23,143,115,0.1)',
+  // 'rgba(7,130,165,0.1)',
+  // 'rgba(14,85,136,0.1)',
+  // 'rgba(231,196,53,0.1)',
+  // 'rgba(33,80,28,0.1)',
 ]
 export default {
   name: "BusRoute_Chart",
@@ -101,6 +106,7 @@ export default {
         legend: {
           data: _this.routesId,
           top: 20,
+          left: 0
         },
         toolbox: {
           feature: {

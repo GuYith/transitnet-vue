@@ -54,12 +54,13 @@
         <el-tab-pane label="Static Analysis Panel" name="second">
           <el-form label-width="30px" :label-position="labelPosition" id="form">
             <el-form-item label="Time">
-<!--              TODO 设置默认的时间，如107，所有的显示按照这个日期来-->
               <el-date-picker v-model="timeSpan" type="daterange" start-placeholder = "Start" end-placeholder= "End" :default-time="['00:00:01','23:59:59']" ></el-date-picker>
               <el-button class="btn" @click="clearTimeSpan">clear</el-button>
               <el-button class="btn" @click="setTimeSpan">SetTimeSpan</el-button>
-<!--              TODO 按钮的方法和显示的label需要修改，应该改为showAll-->
-              <el-button class="btn" @click="displayOriginTrips_Canvas">Origin</el-button>
+            </el-form-item>
+            <el-form-item>
+              <el-button class="btn" @click="show_transit_network">Show Transit Network</el-button>
+              <el-button class="btn" @click="show_road_speed">Show Road Speed</el-button>
             </el-form-item>
             <el-form-item label="RouteId">
               <el-select v-model="curRouteId" placeholder="Select RouteId" @change="listTrips">
@@ -73,7 +74,6 @@
             </el-form-item>
             <el-form-item label="TripId">
               <el-select v-model="curTripId" placeholder="Select TripId" >
-<!--                TODO modify to the shapeIdList(for one route) in select and add a list for trip with Time -->
                 <el-option
                     v-for="item in tripIdOptions"
                     :key="item.tripId"
@@ -86,11 +86,7 @@
               <el-button @click="showOneTrajectory">Select</el-button>
             </el-form-item>
             <el-form-item id="lastItem">
-              <el-table :data="stopData" height="350">
-                <el-table-column
-                    prop="stopId"
-                    label="stopId">
-                </el-table-column>
+              <el-table :data="stopList" height="350" @row-click="clickStopRow">
                 <el-table-column
                     prop="stopName"
                     label="stopName">
@@ -98,10 +94,6 @@
                 <el-table-column
                     prop="arrivalTime"
                     label="arrivalTime">
-                </el-table-column>
-                <el-table-column
-                    prop="departureTime"
-                    label="departureTime">
                 </el-table-column>
               </el-table>
             </el-form-item>
@@ -114,7 +106,8 @@
         <el-main>
           <el-button class="toggleButton" @click="toggleCollapseLeft" :icon="isCollapseLeft ? 'el-icon-d-arrow-right' : 'el-icon-d-arrow-left'"> </el-button>
           <div id="map_container">
-            <div id="legend" ref="mapLegend"></div>
+            <div id="legendVehicle" ref="mapLegendVehicle"></div>
+            <div id="legendRoadSpeed" ref="mapLegendRoadSpeed"></div>
             <el-button id="clearDrawButton" @click="clearAllDraw">Clear Draw</el-button>
             <div id="baiduMap" ></div>
               <div id="detailWindow" ref="detailWindow">
@@ -137,7 +130,6 @@
 <!--            <BusSpeed_Chart></BusSpeed_Chart>-->
 <!--          </div>-->
           <div style="width: 100%; height: 260px">
-<!--            TODO color improve-->
             <BusRoute_Chart ref="routeChart"></BusRoute_Chart>
             <BusTrip_Chart ref="tripChart"></BusTrip_Chart>
           </div>
@@ -157,8 +149,9 @@ import {
   getVehicleColor,
   arrowPoint,
   generateBusVehiclePointer,
+  getPixelRatio,
   mapVOptions,
-  LEGEND_DATA,
+  LEGEND_DATA1, LEGEND_DATA2,
   CANVAS_ZINDEX_VEHICLE, CANVAS_ZINDEX_LINE, pathStyle, rectStyle
 } from '../../public/utils.js';
 import {CanvasLayer} from "../../public/CanvasLayer.js";
@@ -176,11 +169,18 @@ export default {
       trajData: {
         trajectories: [],
         weights: [],
-        totalPoints: []
+        totalPoints: [],
+        stopData: []
       },
       map: {},
       timeSpan: [],
-      stopData: [],
+      stopList: [],
+      displayStopData: {
+        stopIdList: [],
+        stopNameList: [],
+        stopTimeList: [],
+        stopPointList:[]
+      },
       labelPosition: 'top',
       routeIdOptions: [],
       tripIdOptions: [],
@@ -194,6 +194,7 @@ export default {
       mapLayers: {
         lineLayer: null,
         stopLayer: null,
+        canvasLayerStopText: null,
         canvasLayerLine: null,
         canvasLayerPointer: null,
         canvasLayerBack: null,
@@ -280,36 +281,64 @@ export default {
       _this.addDrawer();
       _this.listAllRoutesIdOption();
       _this.map.addControl(navigation); //add navigation control to map
-      // await _this.displayOriginTrips_Canvas(); //canvas Layer for route
       await _this.displayRouteShapeAndSpeed_Canvas();
       await _this.displayVehicle_Canvas(); //canvas Layer for busVehicle
     },
     showLegend() {
-      let canvas = this.$refs.mapLegend;
-      let zr = zrender.init(canvas);
-      let legendData = LEGEND_DATA;
-      let interval = 25;
-      for (let i = 0, len = legendData.length; i < len; i ++) {
+      let canvas1 = this.$refs.mapLegendVehicle;
+      let zr1 = zrender.init(canvas1);
+      let legendData1 = LEGEND_DATA1;
+      let interval1 = 25;
+      for (let i = 0, len = legendData1.length; i < len; i ++) {
         let circle = new zrender.Circle({
           shape: {
             cx: 20,
-            cy: 20+i * interval,
+            cy: 20+i * interval1,
             r: 10,
           },
           style: {
-            fill: legendData[i].color
+            fill: legendData1[i].color
           }
         });
-        zr.add(circle);
+        zr1.add(circle);
         let txt = new zrender.Text({
           style: {
             textFill: "rgb(0,0,0)",
-            text: legendData[i].label,
+            text: legendData1[i].label,
             fontSize: 12,
           },
-          position:[35, i*interval + 17]
+          position:[35, i*interval1 + 17]
         });
-        zr.add(txt);
+        zr1.add(txt);
+      }
+
+      let canvas2 = this.$refs.mapLegendRoadSpeed;
+      let legendData2 = LEGEND_DATA2;
+      let interval2 = 40;
+      let zr2 = zrender.init(canvas2);
+      for (let i = 0, len = legendData2.length; i < len; i ++) {
+        let line = new zrender.Line({
+          shape: {
+            x1: 10 + i * interval2,
+            y1: 10,
+            x2: 10 + (i+1) * interval2,
+            y2: 10,
+          },
+          style: {
+            stroke: legendData2[i].color,
+            lineWidth: 10
+          }
+        });
+        zr2.add(line);
+        let txt = new zrender.Text({
+          style: {
+            textFill: "rgb(0,0,0)",
+            text: legendData2[i].label,
+            fontSize: 12,
+          },
+          position:[30 + i*interval2 - 0.5*interval2, 20]
+        });
+        zr2.add(txt);
       }
     },
     /**
@@ -458,9 +487,13 @@ export default {
         zIndex: CANVAS_ZINDEX_VEHICLE //make sure the layer's index is high enough to trigger the mouse methods
       });
     },
+    show_road_speed() {
+      this.clearAll();
+      this.displayRouteShapeAndSpeed_Canvas();
+    },
     async displayRouteShapeAndSpeed_Canvas() {
       this.$message({
-        message: 'Loading the routes',
+        message: 'Loading the routes history speed',
         type: 'success'
       });
       let _this = this;
@@ -501,63 +534,58 @@ export default {
       }).catch(error => {
         _this.dealError(error);
       });
-
+      // _this.mapLayers.canvasLayerBack = new CanvasLayer({
+      //   map: _this.map,
+      //   update: _this.updateCanvasBack,
+      //   zIndex: CANVAS_ZINDEX_LINE-1,
+      // });
       _this.mapLayers.canvasLayerLine = new CanvasLayer({
         map: _this.map,
-        update: _this.updateCanvasLine,
+        update: _this.updateCanvasLine_roadSpeed,
         zIndex: CANVAS_ZINDEX_LINE
       });
     },
+    show_transit_network() {
+      this.clearAll();
+      this.displayTransitNetwork_Canvas();
+    },
     /**
-     * @description display origin trajectories of every Route
+     * @description display trajectories of transit network
      * by canvas
      */
-    async displayOriginTrips_Canvas() {
+    async displayTransitNetwork_Canvas() {
       this.$message({
-        message: 'Loading the routes',
+        message: 'Loading the transit network',
         type: 'success'
       });
       let _this = this;
       var routes = [];
       _this.trajData.trajectories = [];
       _this.trajData.totalPoints = [];
+      _this.trajData.weights = [];
       /**
-       * @get, url: /mapv/origin
+       * @get, url: /mapv/transitnetwork
        * @dataType List<RoutesVo>
        */
-      await this.$axios.get('/mapv/origin').then(response => {
+      await this.$axios.get('/mapv/transitnetwork').then(response => {
         if (response && response.status === 200) {
           routes = response.data;
           //Foreach route
           routes.forEach(route => {
             _this.trajData.trajectories.push(route.trajJsonModel);
           });
-          //CanvasLayer color to display the speed of points
-          let maxLength = _this.trajData.trajectories.length;
-          for (let k = 0; k < maxLength; k++) {
-            let pointsList = [];
-            let tempList = _this.trajData.trajectories[k].geometry.coordinates;
-            for (let i = 0; i < tempList.length; i++) {
-              let bp = new BMap.Point(tempList[i][0], tempList[i][1]);
-              pointsList.push(bp);
-            }
-            _this.trajData.totalPoints.push(pointsList);
-            let weightList = [];
-            for (let i = 0; i < pointsList.length; i += 1) {
-              weightList.push(Math.random() * 100);
-            }
-            _this.trajData.weights.push(weightList);
-          }
+          let dataSet = new mapv.DataSet(_this.trajData.trajectories);
+          _this.mapLayers.lineLayer = new mapv.baiduMapLayer(_this.map, dataSet, mapVOptions.mapv_bus_line_light_green);
         } else _this.dealResponse(response);
       }).catch(error => {
         _this.dealError(error);
       });
 
-      _this.mapLayers.canvasLayerLine = new CanvasLayer({
-        map: _this.map,
-        update: _this.updateCanvasLine,
-        zIndex: CANVAS_ZINDEX_LINE
-      });
+      // _this.mapLayers.canvasLayerLine = new CanvasLayer({
+      //   map: _this.map,
+      //   update: _this.updateCanvasLine_roadSpeed,
+      //   zIndex: CANVAS_ZINDEX_LINE
+      // });
 
     },
     /**
@@ -760,7 +788,6 @@ export default {
           let centerPoint = new BMap.Point(curGeometry.coordinates[0][0], curGeometry.coordinates[0][1]);
           _this.map.centerAndZoom(centerPoint, 14);
           _this.mapLayers.lineLayer = new mapv.baiduMapLayer(_this.map, dataSet, mapVOptions.mapv_bus_line_light_green);
-
           let pointsList = [];
           for (let i = 0; i < curGeometry.coordinates.length; i++) {
             let bp = new BMap.Point(curGeometry.coordinates[i][0], curGeometry.coordinates[i][1]);
@@ -775,7 +802,7 @@ export default {
           // });
           // _this.mapLayers.canvasLayerLine = new CanvasLayer({
           //   map: _this.map,
-          //   update: _this.updateCanvasLine
+          //   update: _this.updateCanvasLine_roadSpeed
           //   zIndex: CANVAS_ZINDEX_LINE
           // });
           _this.mapLayers.canvasLayerPointer = new CanvasLayer({
@@ -787,28 +814,94 @@ export default {
       }).catch((error) => {
         _this.dealError(error);
       });
+       _this.displayStopData.stopIdList = [];
+       _this.displayStopData.stopNameList = [];
+       _this.displayStopData.stopTimeList = [];
+       _this.displayStopData.stopPointList = [];
       /**
        * @get, url = '/stops/?tripId={tripId}'
        * @dataType List<StopsVo>
        */
       this.$axios.get('/stops/?tripId=' + _this.curTripId).then(response => {
         if (response && response.status === 200) {
-          let tempStopData = response.data;
+          let tempStopData = _this.stopList = response.data;
           //process stop data to geometry
           for (let i = 0; i < tempStopData.length; i++) {
             _this.trajData.stopData.push({
-              geometry: {
-                type: "Point",
-                coordinates: [tempStopData[i].stopLon, tempStopData[i].stopLat]
-              }
+              geometry: tempStopData[i].pointJsonModel.geometry,
+              id: tempStopData[i].stopId,
+              name: tempStopData[i].stopName,
+              time: tempStopData[i].arrivalTime
             });
           }
           let dataSet = new mapv.DataSet(_this.trajData.stopData);
-          _this.mapLayers.stopLayer = new mapv.baiduMapLayer(_this.map, dataSet, mapVOptions.mapv_option_stop);
+          let option =  mapVOptions.mapv_option_stop;
+          _this.mapLayers.canvasLayerStopText = new CanvasLayer({
+            map: _this.map,
+            update:_this.updateCanvasStop,
+            zIndex: 5
+          })
+          let stopMouseMove = function(item) {
+            let layer = _this.mapLayers.canvasLayerStopText;
+            if (!layer.zr) {
+              layer.zr = zrender.init(layer.canvas);
+              layer.zr.resize();
+            }
+            if (item !== null &&  _this.displayStopData.stopIdList.indexOf(item.id) === -1) {
+              _this.displayStopData.stopIdList.push(item.id);
+              _this.displayStopData.stopNameList.push(item.name);
+              _this.displayStopData.stopTimeList.push(item.time);
+              let point = new BMap.Point(item.geometry.coordinates[0], item.geometry.coordinates[1]);
+              _this.displayStopData.stopPointList.push(point);
+              let pixel = _this.map.pointToPixel(point);
+              let text = new zrender.Text({
+                style: {
+                  textFill: "rgb(0,0,0)",
+                  text: item.name + " " + item.time,
+                  fontSize: 14
+                },
+                position:[pixel.x+10, pixel.y+10]
+              })
+              layer.zr.add(text);
+              setTimeout(() => {
+                let tempIdx = _this.displayStopData.stopIdList.indexOf(item.id);
+                _this.displayStopData.stopIdList.splice(tempIdx, 1);
+                _this.displayStopData.stopNameList.splice(tempIdx, 1);
+                _this.displayStopData.stopPointList.splice(tempIdx, 1);
+                _this.displayStopData.stopTimeList.splice(tempIdx, 1);
+              }, 5000);
+            }
+          }
+          option.methods.mousemove = stopMouseMove;
+          _this.mapLayers.stopLayer = new mapv.baiduMapLayer(_this.map, dataSet, option);
         } else _this.dealResponse(response);
       }).catch((error) => {
         _this.dealError(error);
       });
+    },
+    updateCanvasStop() {
+      let _this = this;
+      let layer = _this.mapLayers.canvasLayerStopText;
+      if (!layer.zr) {
+        layer.zr = zrender.init(layer.canvas);
+        layer.zr.resize();
+      } else {
+        layer.zr.clear();
+      }
+      let len = _this.displayStopData.stopIdList.length;
+      for(let i = 0; i < len; i ++) {
+        let point = _this.displayStopData.stopPointList[i];
+        let pixel = _this.map.pointToPixel(point);
+        let text = new zrender.Text({
+          style: {
+            textFill: "rgb(0,0,0)",
+            text: _this.displayStopData.stopNameList[i] + " " + _this.displayStopData.stopTimeList[i],
+            fontSize: 14
+          },
+          position:[pixel.x+10, pixel.y+10]
+        })
+        layer.zr.add(text);
+      }
     },
     /**
      * @description display mapV layers
@@ -1055,36 +1148,67 @@ export default {
      * @description updateCanvas Line
      * @for CanvasLayerLine
      */
-    updateCanvasLine() {
-      let _this = this;
-      const ctx = _this.mapLayers.canvasLayerLine.canvas.getContext('2d'); //init
-      if (!ctx) return;
-      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); //clear
-      for (let k = 0; k < _this.trajData.totalPoints.length; k++) {
-        let pointsList = _this.trajData.totalPoints[k];
-        let weightList = _this.trajData.weights[k];
+    updateCanvasLine_roadSpeed() {
+      let that = this;
+      let _this = this.mapLayers.canvasLayerLine;
+      if(!_this.zr) {
+        _this.zr = zrender.init(_this.canvas);
+      } else {
+        _this.zr.clear();
+      }
+      _this.zr.resize();
+      for (let k = 0; k < that.trajData.totalPoints.length; k++) {
+        let pointsList = that.trajData.totalPoints[k];
+        let weight = that.trajData.weights[k].length > 0 ? that.trajData.weights[k][0] : 0;
+        var points = []
         if (pointsList.length !== 0) {
-          for (let i = 0, len = pointsList.length; i < len - 2; i += 1) {
-            //init pixels
-            const pixel = _this.map.pointToPixel(pointsList[i]);
-            const nextPixel = _this.map.pointToPixel(pointsList[i + 1]);
-            ctx.beginPath();
-            ctx.moveTo(pixel.x, pixel.y); // move to the start pixel
-            ctx.lineCap = 'round';
-            ctx.lineWidth = 3;
-            //set gradient
-            const grd = ctx.createLinearGradient(pixel.x, pixel.y, nextPixel.x, nextPixel.y);
-            const nowValue = weightList[i]; //value weight
-            const nextValue = weightList[i + 1];
-            grd.addColorStop(0, getTrajColorByValue(nowValue));
-            grd.addColorStop(1, getTrajColorByValue(nextValue));
-            ctx.strokeStyle = grd;
-            ctx.lineTo(nextPixel.x, nextPixel.y);
-            ctx.stroke(); //to draw
+          for (let i = 0, len = pointsList.length; i < len; i += 1) {
+            let pixel = that.map.pointToPixel(pointsList[i]);
+            points.push([pixel.x, pixel.y]);
           }
-          // ctx.closePath();
+          let line = new zrender.Polyline({
+            style: {
+              stroke: getTrajColorByValue(weight),
+              lineWidth: 3.5,
+              shadowColor: "#000",
+              shadowBlur: 2
+            },
+            shape: {
+              points: points,
+              smooth: 1
+            }
+          });
+          _this.zr.add(line);
         }
       }
+      // var ctx = _this.mapLayers.canvasLayerLine.canvas.getContext('2d'); //init
+      // if (!ctx) return;
+      // ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); //clear
+      // for (let k = 0; k < _this.trajData.totalPoints.length; k++) {
+      //   let pointsList = _this.trajData.totalPoints[k];
+      //   let weightList = _this.trajData.weights[k];
+      //   if (pointsList.length !== 0) {
+      //     for (let i = 0, len = pointsList.length; i < len - 2; i += 1) {
+      //       //init pixels
+      //       const pixel = _this.map.pointToPixel(pointsList[i]);
+      //       const nextPixel = _this.map.pointToPixel(pointsList[i + 1]);
+      //       ctx.beginPath();
+      //       ctx.moveTo(pixel.x, pixel.y); // move to the start pixel
+      //       ctx.lineCap = 'round';
+      //       ctx.lineWidth = 3;
+      //       //set gradient
+      //       const grd = ctx.createLinearGradient(pixel.x, pixel.y, nextPixel.x, nextPixel.y);
+      //       const nowValue = weightList[i]; //value weight
+      //       const nextValue = weightList[i + 1];
+      //       grd.addColorStop(0, getTrajColorByValue(nowValue));
+      //       grd.addColorStop(1, getTrajColorByValue(nextValue));
+      //       ctx.strokeStyle = grd;
+      //       ctx.lineTo(nextPixel.x, nextPixel.y);
+      //       ctx.stroke(); //to draw
+      //     }
+      //     // ctx.closePath();
+      //   }
+      // }
     },
     /**
      * @description updateCanvas Pointer
@@ -1161,7 +1285,7 @@ export default {
             const nextPixel = _this.map.pointToPixel(pointsList[i + 1]);
             ctx.beginPath();
             ctx.moveTo(pixel.x, pixel.y);
-            ctx.lineWidth = 5 + 3;
+            ctx.lineWidth = 6;
             ctx.strokeStyle = '#8b8b89';
             ctx.lineTo(nextPixel.x, nextPixel.y);
             ctx.lineCap = 'round';
@@ -1257,6 +1381,39 @@ export default {
     submitTrips() {
       let _this = this;
       _this.$refs.tripChart.updateTripChart(_this.selectedTripList, _this.realTimeDate);
+    },
+    clickStopRow(row) {
+      let _this = this;
+      let point = new BMap.Point(row.lng, row.lat)
+      _this.map.centerAndZoom(point, 18);
+      let layer = _this.mapLayers.canvasLayerStopText;
+      if (!layer.zr) {
+        layer.zr = zrender.init(layer.canvas);
+        layer.zr.resize();
+      }
+      if (_this.displayStopData.stopIdList.indexOf(row.stopId) === -1) {
+        _this.displayStopData.stopIdList.push(row.stopId);
+        _this.displayStopData.stopNameList.push(row.stopName);
+        _this.displayStopData.stopTimeList.push(row.arrivalTime);
+        _this.displayStopData.stopPointList.push(point);
+        let pixel = _this.map.pointToPixel(point);
+        let text = new zrender.Text({
+          style: {
+            textFill: "rgb(0,0,0)",
+            text: row.stopName + " " + row.stopTime,
+            fontSize: 14
+          },
+          position:[pixel.x+10, pixel.y+10]
+        })
+        layer.zr.add(text);
+        setTimeout(() => {
+          let tempIdx = _this.displayStopData.stopIdList.indexOf(row.stopId);
+          _this.displayStopData.stopIdList.splice(tempIdx, 1);
+          _this.displayStopData.stopNameList.splice(tempIdx, 1);
+          _this.displayStopData.stopPointList.splice(tempIdx, 1);
+          _this.displayStopData.stopTimeList.splice(tempIdx, 1);
+        }, 5000);
+      }
     }
   }
 }
@@ -1370,7 +1527,7 @@ img[src="http://api.map.baidu.com/images/iw3.png"]{
   width: 100% !important;
   height: 100% !important;
 }
-#legend {
+#legendVehicle {
   background-color: rgba(219, 219, 219, 0.5);
   border-radius: 5px;
   margin: 5px;
@@ -1381,6 +1538,17 @@ img[src="http://api.map.baidu.com/images/iw3.png"]{
   width: 95px;
   z-index: 10;
 }
+#legendRoadSpeed {
+  background-color: transparent;
+  margin: 2px;
+  position: absolute;
+  top: 10px;
+  right: 0px;
+  height: 70px;
+  width: 230px;
+  z-index: 10;
+}
+
 #detailWindow {
   display: none;
   /*width: 390px;*/
