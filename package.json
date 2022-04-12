@@ -8,6 +8,7 @@
     "lint": "vue-cli-service lint"
   },
   "dependencies": {
+    "@turf/point-to-line-distance": "^6.5.0",
     "axios": "^0.24.0",
     "core-js": "^3.6.5",
     "echarts": "^5.2.2",
@@ -28,6 +29,7 @@
     "babel-eslint": "^10.1.0",
     "eslint": "^6.7.2",
     "eslint-plugin-vue": "^6.2.2",
+    "vue-router": "^3.2.0",
     "vue-template-compiler": "^2.6.11",
     "webpack": "^4.46.0"
   },

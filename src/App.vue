@@ -1,13 +1,12 @@
 <template>
   <div id = 'root'>
-    <MapVisual></MapVisual>
+    <router-view></router-view>
   </div>
 </template>
 <script>
 import MapVisual from "@/components/MapVisual";
-
 export default {
-  components: { MapVisual},
+  components: { },
   data () {
     return{}
   }
@@ -16,6 +15,8 @@ export default {
 <style>
 #root {
   height: 100%;
+  weight: 100%;
+  color: black;
   margin: 0;
   padding: 0;
 }

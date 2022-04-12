@@ -142,6 +142,8 @@
 <script>
 /* eslint-disable */
 import * as zrender from 'zrender';
+import CanvasPainter from "zrender/lib/canvas/Painter"
+zrender.registerPainter("canvas",CanvasPainter)
 import FlipClock from 'kuan-vue-flip-clock';
 import {
   MP,
@@ -423,7 +425,7 @@ export default {
           offset: new BMap.Size(5, 5),        // offset from the position
           scale: 1.2,
           drawingModes: [                    // functions on tool bar
-            // BMAP_DRAWING_MARKER,
+            BMAP_DRAWING_MARKER,
             // BMAP_DRAWING_CIRCLE,
             BMAP_DRAWING_POLYLINE,
             // BMAP_DRAWING_POLYGON,

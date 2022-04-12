@@ -3,7 +3,7 @@ export const mapVOptions = {
         strokeStyle: 'rgb(30,200,81,0.7)',
             shadowColor: 'rgb(32,57,31)',
             shadowBlur: 3,
-            lineWidth: 1.5,
+            lineWidth: 3,
             draw: 'simple',
     },
     mapv_option_stop: {
