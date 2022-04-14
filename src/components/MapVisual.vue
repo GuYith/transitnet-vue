@@ -161,6 +161,7 @@ import BusRoute_Chart from "@/components/BusRoute_Chart";
 import BusTime_Chart from "@/components/BusTime_Chart";
 import BusSpeed_Chart from "@/components/BusSpeed_Chart";
 import BusTrip_Chart from "@/components/BusTrip_Chart"
+import * as turf from "@turf/turf";
 export default {
   name: "MapVisual",
   components: {BusTrip_Chart, FlipClock, BusRoute_Chart, BusTime_Chart, BusSpeed_Chart},
@@ -192,6 +193,21 @@ export default {
         bearings: [],
         points: [],
         speeds: [],
+      },
+      nearestVehicleData: {
+        idList: [],
+        vehicleIds: [],
+        vehicleInfos: [],
+        bearings: [],
+        points: [],
+        speeds: [],
+      },
+      nearestTrajData: {
+        idList: [],
+        trajectories: [],
+        weights: [],
+        totalPoints: [],
+        stopData: []
       },
       mapLayers: {
         lineLayer: null,
@@ -226,9 +242,12 @@ export default {
         line_label: [],
         rect_polygons: [],
         rect_label: [],
-        counter_line: 0,
-        counter_rect: 0,
+        marker_polygons: [],
+        marker_label: [],
+        marker_points: [],
+        overlayIdx: [],
       },
+      turfLineStrings: [],
       realTimeRouteOptions:[],
       realTimeTripOptions:[],
       selectedRouteList:[],
@@ -451,7 +470,6 @@ export default {
             _this.map.addOverlay(label);
             _this.drawerData.line_label.push(label);
             _this.drawerData.line_polygons.push(line);
-            _this.drawerData.counter_line++;
             //drawline API
       };
       let rectComplete = function (rect) {
@@ -469,11 +487,38 @@ export default {
         _this.map.addOverlay(label);
         _this.drawerData.rect_label.push(label);
         _this.drawerData.rect_polygons.push(rect);
-        _this.drawerData.counter_rect++;
         //drawRect API
+      };
+
+      let markerComplete = function (marker) {
+        let point = turf.point([marker.point.lng, marker.point.lat]);
+        let bp = new BMap.Point(marker.point.lng, marker.point.lat);
+        let opts = {
+          position : bp,
+        };
+        let label = new BMap.Label("marker"+ _this.drawerData.marker_polygons.length + ": (" + marker.point.lng +  "," + marker.point.lat + ")" , opts);
+        label.setStyle({
+          color : "black",
+          fontWeight: "bold",
+          fontSize : "15px",
+          height : "0px",
+          width: "0px"
+        });
+        _this.map.addOverlay(label);
+        _this.drawerData.marker_label.push(label);
+        _this.drawerData.marker_points.push(point);
+        _this.drawerData.marker_polygons.push(marker);
+        //drawMarker API
+        _this.$message({
+          message: 'Select the 10 nearest routes and vehicle, please waiting',
+          type: "success",
+        })
+        _this.updateCanvasLine_roadSpeed();
+        _this.updateCanvasBusVehicle();
       };
       drawer.addEventListener("polylinecomplete", lineComplete);
       drawer.addEventListener("rectanglecomplete", rectComplete);
+      drawer.addEventListener("markercomplete", markerComplete);
     },
     async displayVehicle_Canvas() {
       this.$message({
@@ -489,6 +534,63 @@ export default {
         zIndex: CANVAS_ZINDEX_VEHICLE //make sure the layer's index is high enough to trigger the mouse methods
       });
     },
+    selectNearestVehicle(k) {
+      let _this = this;
+      let len = _this.visualVehicles.vehicleIds.length;
+      //select top k vehicle
+      _this.nearestVehicleData = {
+        idList: [],
+        vehicleIds: [],
+        vehicleInfos: [],
+        bearings: [],
+        points: [],
+        speeds: [],
+      };
+      for(let t = 0; t < _this.drawerData.marker_points.length; t ++) {
+        let point = _this.drawerData.marker_points[t];
+        let distList = [];
+        for(let i = 0; i < len; i ++) {
+          let tp = turf.point([_this.visualVehicles.points[i].lng, _this.visualVehicles.points[i].lat]);
+          let dist = turf.distance(point, tp, {units: "miles"});
+          distList.push([_this.visualVehicles.vehicleIds[i], dist, i]);
+        }
+        distList.sort((a, b) => a[1] > b[1] ? 1 : a[1] < b[1] ? -1 : 0);
+        for(let i = 0; i < k && i < len; i ++) {
+          let tempId =  distList[i][0];
+          let tempIdx = distList[i][2];
+          if(_this.nearestVehicleData.vehicleIds.indexOf(tempId) === -1) {
+            _this.nearestVehicleData.vehicleIds.push(_this.visualVehicles.vehicleIds[tempIdx]);
+            _this.nearestVehicleData.bearings.push(_this.visualVehicles.bearings[tempIdx]);
+            _this.nearestVehicleData.vehicleInfos.push(_this.visualVehicles.vehicleInfos[tempIdx]);
+            _this.nearestVehicleData.speeds.push(_this.visualVehicles.speeds[tempIdx]);
+            _this.nearestVehicleData.points.push(_this.visualVehicles.points[tempIdx]);
+          }
+        }
+      }
+      // _this.updateCanvasLine_roadSpeed();
+    },
+    selectNearestTraj(point, k) {
+      let _this = this;
+      let len = _this.trajData.trajectories.length;
+      //select top k trajs
+      let distList = [];
+      for(let i = 0; i < len; i ++) {
+        let line = _this.turfLineStrings[i];
+        let dist = turf.pointToLineDistance(point, line, {units: "miles"});
+        distList.push([i, dist]);
+      }
+      distList.sort((a, b) => a[1] > b[1] ? 1 : a[1] < b[1] ? -1 : 0);
+      for(let i = 0; i < k && i < len; i ++) {
+        let tempIdx =  distList[i][0];
+        if(_this.nearestTrajData.idList.indexOf(tempIdx) === -1) {
+          _this.nearestTrajData.idList.push(tempIdx);
+          _this.nearestTrajData.trajectories.push(_this.trajData.trajectories[tempIdx]);
+          _this.nearestTrajData.totalPoints.push(_this.trajData.totalPoints[tempIdx]);
+          _this.nearestTrajData.weights.push(_this.trajData.weights[tempIdx]);
+        }
+      }
+      // _this.updateCanvasLine_roadSpeed();
+    },
     show_road_speed() {
       this.clearAll();
       this.displayRouteShapeAndSpeed_Canvas();
@@ -503,6 +605,7 @@ export default {
       _this.trajData.trajectories = [];
       _this.trajData.totalPoints = [];
       _this.trajData.weights = [];
+      _this.turfLineStrings = [];
       await this.$axios.get('/routes/speed').then(response => {
         if (response && response.status === 200) {
           allShapeList = response.data;
@@ -528,6 +631,7 @@ export default {
                 coordinates: coordinatesList
               }
             };
+            _this.turfLineStrings.push(turf.lineString(coordinatesList));
             _this.trajData.trajectories.push(trajSum);
             _this.trajData.totalPoints.push(pointsList);
             _this.trajData.weights.push(speedList);
@@ -940,7 +1044,7 @@ export default {
       let overlays = _this.map.getOverlays();
       for(let i = 0; i < overlays.length; i++) {
         let tempOL = overlays[i];
-        console.log(tempOL.toString());
+        // console.log(tempOL.toString());
         if(tempOL.toString() === "[object Overlay]")
           _this.map.removeOverlay(tempOL);
       }
@@ -965,7 +1069,7 @@ export default {
         _this.mapLayers.canvasLayerBusVehicle = null;
       }
     },
-    updateCanvasBusVehicle() {
+    async updateCanvasBusVehicle() {
       let that = this;
       let _this = this.mapLayers.canvasLayerBusVehicle;
       if (!_this.zr) {
@@ -975,10 +1079,19 @@ export default {
       }
       _this.zr.resize(); //solve the offset caused by dragging or zooming the map
       //data prepare Test
-      let points = that.visualVehicles.points;
-      let weights = that.visualVehicles.speeds;
-      let bearings = that.visualVehicles.bearings;
-      let infos = that.visualVehicles.vehicleInfos;
+      if(that.drawerData.marker_points.length > 0) {
+        await that.selectNearestVehicle(10);
+        var points = that.nearestVehicleData.points;
+        var weights = that.nearestVehicleData.speeds;
+        var bearings = that.nearestVehicleData.bearings;
+        var infos = that.nearestVehicleData.vehicleInfos;
+      } else {
+        var points = that.visualVehicles.points;
+        var weights = that.visualVehicles.speeds;
+        var bearings = that.visualVehicles.bearings;
+        var infos = that.visualVehicles.vehicleInfos;
+      }
+
       for (let k = 0; k < weights.length; k ++) {
         const pixel = that.map.pointToPixel(points[k]);
         let circle = new zrender.Circle({
@@ -1028,7 +1141,7 @@ export default {
         _this.zr.add(line1);
       }
     },
-    removeOneVehicle(tempIdx) {
+    removeOneVehicle_visualVehicles(tempIdx) {
       this.visualVehicles.vehicleIds.splice(tempIdx,1);
       this.visualVehicles.bearings.splice(tempIdx,1);
       this.visualVehicles.speeds.splice(tempIdx,1);
@@ -1070,7 +1183,7 @@ export default {
             } else {
               let curVIdx = _this.visualVehicles.vehicleIds.indexOf(tempVehicle.vehicleId);
               //remove the vehicle already arrival the end
-              if(tempVehicle.nextStop === "") _this.removeOneVehicle(curVIdx);
+              if(tempVehicle.nextStop === "") _this.removeOneVehicle_visualVehicles(curVIdx);
               else {
                 _this.visualVehicles.points[curVIdx] = new BMap.Point(tempVehicle.lon, tempVehicle.lat);
                 _this.visualVehicles.bearings[curVIdx] = tempVehicle.bearing;
@@ -1084,7 +1197,9 @@ export default {
           _this.visualVehicles.vehicleIds.forEach((curVehicle) => {
             let tempVIdx = _this.visualVehicles.vehicleIds.indexOf(curVehicle);
             let recordTime = new Date(_this.visualVehicles.vehicleInfos[tempVIdx].recordedTime);
-            if(curTimeDate.getTime() - recordTime.getTime() >= DELETEBEFORE) _this.removeOneVehicle(tempVIdx);
+            if(curTimeDate.getTime() - recordTime.getTime() >= DELETEBEFORE) {
+              _this.removeOneVehicle_visualVehicles(tempVIdx);
+            }
           });
         } else _this.dealResponse(response);
       }).catch(error=>{
@@ -1144,13 +1259,21 @@ export default {
         points: [],
         speeds: [],
       };
+      this.nearestVehicleData = {
+        idList: [],
+        vehicleIds: [],
+        vehicleInfos: [],
+        bearings: [],
+        points: [],
+        speeds: [],
+      };
       this.updateCanvasBusVehicle();
     },
     /**
      * @description updateCanvas Line
      * @for CanvasLayerLine
      */
-    updateCanvasLine_roadSpeed() {
+    async updateCanvasLine_roadSpeed() {
       let that = this;
       let _this = this.mapLayers.canvasLayerLine;
       if(!_this.zr) {
@@ -1159,28 +1282,57 @@ export default {
         _this.zr.clear();
       }
       _this.zr.resize();
-      for (let k = 0; k < that.trajData.totalPoints.length; k++) {
-        let pointsList = that.trajData.totalPoints[k];
-        let weight = that.trajData.weights[k].length > 0 ? that.trajData.weights[k][0] : 0;
-        var points = []
-        if (pointsList.length !== 0) {
-          for (let i = 0, len = pointsList.length; i < len; i += 1) {
-            let pixel = that.map.pointToPixel(pointsList[i]);
-            points.push([pixel.x, pixel.y]);
-          }
-          let line = new zrender.Polyline({
-            style: {
-              stroke: getTrajColorByValue(weight),
-              lineWidth: 3.5,
-              shadowColor: "#000",
-              shadowBlur: 2
-            },
-            shape: {
-              points: points,
-              smooth: 1
+      let markerLen = that.drawerData.marker_points.length;
+      if( markerLen > 0) {
+        await that.selectNearestTraj(that.drawerData.marker_points[markerLen-1], 10);
+        for (let k = 0; k < that.nearestTrajData.totalPoints.length; k++) {
+          let pointsList = that.nearestTrajData.totalPoints[k];
+          let weight = that.nearestTrajData.weights[k].length > 0 ? that.trajData.weights[k][0] : 0;
+          var points = []
+          if (pointsList.length !== 0) {
+            for (let i = 0, len = pointsList.length; i < len; i += 1) {
+              let pixel = that.map.pointToPixel(pointsList[i]);
+              points.push([pixel.x, pixel.y]);
             }
-          });
-          _this.zr.add(line);
+            let line = new zrender.Polyline({
+              style: {
+                stroke: getTrajColorByValue(weight),
+                lineWidth: 3.5,
+                shadowColor: "#000",
+                shadowBlur: 2
+              },
+              shape: {
+                points: points,
+                smooth: 1
+              }
+            });
+            _this.zr.add(line);
+          }
+        }
+      } else {
+        for (let k = 0; k < that.trajData.totalPoints.length; k++) {
+          let pointsList = that.trajData.totalPoints[k];
+          let weight = that.trajData.weights[k].length > 0 ? that.trajData.weights[k][0] : 0;
+          var points = []
+          if (pointsList.length !== 0) {
+            for (let i = 0, len = pointsList.length; i < len; i += 1) {
+              let pixel = that.map.pointToPixel(pointsList[i]);
+              points.push([pixel.x, pixel.y]);
+            }
+            let line = new zrender.Polyline({
+              style: {
+                stroke: getTrajColorByValue(weight),
+                lineWidth: 3.5,
+                shadowColor: "#000",
+                shadowBlur: 2
+              },
+              shape: {
+                points: points,
+                smooth: 1
+              }
+            });
+            _this.zr.add(line);
+          }
         }
       }
       // var ctx = _this.mapLayers.canvasLayerLine.canvas.getContext('2d'); //init
@@ -1360,14 +1512,33 @@ export default {
         line_label: [],
         rect_polygons: [],
         rect_label: [],
-        counter_line: 0,
-        counter_rect: 0,
+        marker_polygons: [],
+        marker_label: [],
+        marker_points: [],
         overlayIdx: [],
       }
+
+      _this.nearestTrajData = {
+        idList: [],
+        trajectories: [],
+        weights: [],
+        totalPoints: [],
+        stopData: []
+      };
+      _this.nearestVehicleData = {
+        idList: [],
+        vehicleIds: [],
+        vehicleInfos: [],
+        bearings: [],
+        points: [],
+        speeds: [],
+      };
+      _this.updateCanvasLine_roadSpeed();
+      _this.updateCanvasBusVehicle();
       let overlays = _this.map.getOverlays();
       for (let i = 0; i < overlays.length; i++) {
         let tempOL = overlays[i];
-        if(tempOL.toString() === "[object Polygon]" ||  tempOL.toString() === "[object Label]" || tempOL.toString() === "[object Polyline]" )
+        if(tempOL.toString() === "[object Polygon]" ||  tempOL.toString() === "[object Label]" || tempOL.toString() === "[object Polyline]" || tempOL.toString() === "[object Marker]" )
           _this.map.removeOverlay(tempOL);
       }
     },
@@ -1592,7 +1763,7 @@ img[src="http://api.map.baidu.com/images/iw3.png"]{
 
 #clearDrawButton {
   position: absolute;
-  left: 280px;
+  left: 350px;
   top: 20px;
   z-index: 10;
 }
