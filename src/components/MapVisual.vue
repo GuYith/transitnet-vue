@@ -126,9 +126,6 @@
       </el-container>
       <el-footer height="260px">
         <el-container>
-<!--          <div style="width: 50%; height: 300px">-->
-<!--            <BusSpeed_Chart></BusSpeed_Chart>-->
-<!--          </div>-->
           <div style="width: 100%; height: 260px">
             <BusRoute_Chart ref="routeChart"></BusRoute_Chart>
             <BusTrip_Chart ref="tripChart"></BusTrip_Chart>
@@ -294,7 +291,6 @@ export default {
             })
           }
       )
-
       const navigation = new BMap.NavigationControl({ //init the navigation
         anchor: BMAP_ANCHOR_BOTTOM_RIGHT,
         type: BMAP_NAVIGATION_CONTROL_SMALL
@@ -306,6 +302,7 @@ export default {
       await _this.displayVehicle_Canvas(); //canvas Layer for busVehicle
     },
     showLegend() {
+      //init canvas for vehicle speed legend
       let canvas1 = this.$refs.mapLegendVehicle;
       let zr1 = zrender.init(canvas1);
       let legendData1 = LEGEND_DATA1;
@@ -332,7 +329,7 @@ export default {
         });
         zr1.add(txt);
       }
-
+      //init canvas for route speed legend
       let canvas2 = this.$refs.mapLegendRoadSpeed;
       let legendData2 = LEGEND_DATA2;
       let interval2 = 40;
@@ -409,6 +406,10 @@ export default {
     },
     getRealTimeRouteOptions() {
       let _this = this;
+      /**
+       * @get, url = "/realTime/routeOptions/?date={realTimeDate}"
+       * @dataType List<String>
+       */
       this.$axios.get("/realTime/routeOptions/?date=" + _this.realTimeDate).then(response=>{
         if(response && response.status === 200) {
           _this.realTimeRouteOptions = response.data;
@@ -417,6 +418,9 @@ export default {
         _this.dealError(error);
       })
     },
+    /**
+     * get tripOptions by routeId
+     */
     getRealTimeTripOptions() {
       let _this = this;
       if(_this.realTimeRouteId === "") {
@@ -426,6 +430,10 @@ export default {
         })
         return ;
       }
+      /**
+       * @get, url = "/realTime/tripOptions/?routeId={RouteId}&date={realTimeDate}"
+       * @dataType List<String>
+       */
       this.$axios.get("/realTime/tripOptions/?routeId=" + _this.realTimeRouteId + "&date=" + _this.realTimeDate).then(response=>{
         if(response && response.status === 200) {
           _this.realTimeTripOptions = response.data;
@@ -436,6 +444,7 @@ export default {
     },
     addDrawer() {
       let _this = this;
+      //drawer setting
       const drawer = new BMapLib.DrawingManager(_this.map, {
         isOpen: false,                          // disable drawing mode
         enableDrawingTool: true,                // displayOnInit tool bar
@@ -454,7 +463,7 @@ export default {
         polylineOptions: pathStyle,
         rectangleOptions: rectStyle
       });
-
+      //after line draw complete
       let lineComplete = function (line){
             let point = line.getPath()[0];
             let opts = {
@@ -472,6 +481,7 @@ export default {
             _this.drawerData.line_polygons.push(line);
             //drawline API
       };
+      //after rect draw complete
       let rectComplete = function (rect) {
         let point = new BMap.Point((rect.getPath()[0].lng + rect.getPath()[2].lng)/2, (rect.getPath()[0].lat + rect.getPath()[2].lat) / 2);
         let opts = {
@@ -489,7 +499,7 @@ export default {
         _this.drawerData.rect_polygons.push(rect);
         //drawRect API
       };
-
+      //after marker draw complete
       let markerComplete = function (marker) {
         let point = turf.point([marker.point.lng, marker.point.lat]);
         let bp = new BMap.Point(marker.point.lng, marker.point.lat);
@@ -516,6 +526,7 @@ export default {
         _this.updateCanvasLine_roadSpeed();
         _this.updateCanvasBusVehicle();
       };
+      //addEvent
       drawer.addEventListener("polylinecomplete", lineComplete);
       drawer.addEventListener("rectanglecomplete", rectComplete);
       drawer.addEventListener("markercomplete", markerComplete);
@@ -534,6 +545,10 @@ export default {
         zIndex: CANVAS_ZINDEX_VEHICLE //make sure the layer's index is high enough to trigger the mouse methods
       });
     },
+    /**
+     * @description select top k nearstVehicle for marker_points List
+     * @param k
+     */
     selectNearestVehicle(k) {
       let _this = this;
       let len = _this.visualVehicles.vehicleIds.length;
@@ -569,12 +584,16 @@ export default {
       }
       // _this.updateCanvasLine_roadSpeed();
     },
+    /**
+     * @description select top k traj nearest point
+     * @param point,k
+     */
     selectNearestTraj(point, k) {
       let _this = this;
       let len = _this.trajData.trajectories.length;
       //select top k trajs
       let distList = [];
-      for(let i = 0; i < len; i ++) {
+      for(let i = 0; i < len; i ++) { //calculate the distlist
         let line = _this.turfLineStrings[i];
         let dist = turf.pointToLineDistance(point, line, {units: "miles"});
         distList.push([i, dist]);
@@ -606,6 +625,10 @@ export default {
       _this.trajData.totalPoints = [];
       _this.trajData.weights = [];
       _this.turfLineStrings = [];
+      /**
+       * @get, url = '/routes/speed'
+       * @dataType List<RouteShapeSpeedVo>
+       */
       await this.$axios.get('/routes/speed').then(response => {
         if (response && response.status === 200) {
           allShapeList = response.data;
@@ -985,7 +1008,11 @@ export default {
         _this.dealError(error);
       });
     },
+    /**
+     * @description display the stop text label
+     */
     updateCanvasStop() {
+      //init
       let _this = this;
       let layer = _this.mapLayers.canvasLayerStopText;
       if (!layer.zr) {
@@ -1091,7 +1118,7 @@ export default {
         var bearings = that.visualVehicles.bearings;
         var infos = that.visualVehicles.vehicleInfos;
       }
-
+      //draw vehicle points
       for (let k = 0; k < weights.length; k ++) {
         const pixel = that.map.pointToPixel(points[k]);
         let circle = new zrender.Circle({
@@ -1141,6 +1168,10 @@ export default {
         _this.zr.add(line1);
       }
     },
+    /**
+     * @description remove visualVehicle data by idx
+     * @param tempIdx
+     */
     removeOneVehicle_visualVehicles(tempIdx) {
       this.visualVehicles.vehicleIds.splice(tempIdx,1);
       this.visualVehicles.bearings.splice(tempIdx,1);
@@ -1148,10 +1179,18 @@ export default {
       this.visualVehicles.vehicleInfos.splice(tempIdx,1);
       this.visualVehicles.points.splice(tempIdx,1);
     },
+    /**
+     * @description select and display the speed data of vehicleId k
+     * @param k vehicleId
+     */
     async curVehicleChartPrepare(k) {
       let _this = this;
       let vehicleId = _this.visualVehicles.vehicleIds[k];
       _this.curVehicle.curVehicleInfo = _this.visualVehicles.vehicleInfos[k];
+      /**
+       * @get, url: /realTime/speed/?vehicleId={vehicleId}&curTime={realTimeDate+realTimeTime}
+       * @dataType List<SpeedDateVo>
+       */
       await _this.$axios.get("/realTime/speed/?vehicleId=" + vehicleId + "&curTime=" + _this.realTimeDate + " " + _this.realTimeTime).then((response) => {
         if (response && response.status === 200) { //last seven days
           _this.curVehicle.curVehicleSpeedList = response.data;
@@ -1160,13 +1199,20 @@ export default {
         _this.dealError(error);
       });
     },
+    /**
+     * @description query vehicle Data by realtime and update the display
+     */
     async updateVehicleData() {
       let _this = this;
       let now = new Date();
       _this.realTimeTime = now.getHours() + ":" + now.getMinutes() + ":" + now.getSeconds();
       let curTime = _this.realTimeDate + ' ' + _this.realTimeTime;
       let curTimeDate = new Date(curTime);
-      let DELETEBEFORE = 5*1000*60;
+      let DELETEBEFORE = 5*1000*60; //5min
+      /**
+       * @get, url: /realTime/?curTime={realTimeDate+realTimeTime}
+       * @dataType List<RealTimeDataVo>
+       */
       await _this.$axios.get('/realTime/?curTime=' + _this.realTimeDate + ' ' + _this.realTimeTime).then((response) => {
         if(response && response.status === 200) {
           let realTimeVehicleList = response.data;
@@ -1205,7 +1251,7 @@ export default {
       }).catch(error=>{
         _this.dealError(error);
       });
-      if(_this.mapLayers.canvasLayerBusVehicle != null) _this.updateCanvasBusVehicle();
+      if(_this.mapLayers.canvasLayerBusVehicle != null) _this.updateCanvasBusVehicle(); //update the display
     },
     /**
      * @description start the real time display
@@ -1222,7 +1268,7 @@ export default {
         message: 'Real-time bus data update is starting, please wait',
         type: 'success'
       });
-      if(this.mapLayers.canvasLayerBusVehicle != null) {
+      if(this.mapLayers.canvasLayerBusVehicle != null) { //update vehicle data
         this.updateVehicleData();
         this.updateCanvasBusVehicle();
       } else {
@@ -1247,6 +1293,9 @@ export default {
       clearInterval(this.timer);
       this.timer = null;
     },
+    /**
+     * @description clear display vehicles and update the display
+     */
     async clearDisplayVehicles() {
       await this.$message({
         message: 'Bus point on the map is clearing, please wait',
@@ -1274,6 +1323,7 @@ export default {
      * @for CanvasLayerLine
      */
     async updateCanvasLine_roadSpeed() {
+      //init the canvas
       let that = this;
       let _this = this.mapLayers.canvasLayerLine;
       if(!_this.zr) {
@@ -1281,7 +1331,7 @@ export default {
       } else {
         _this.zr.clear();
       }
-      _this.zr.resize();
+      _this.zr.resize(); // adaptive setting
       let markerLen = that.drawerData.marker_points.length;
       if( markerLen > 0) {
         await that.selectNearestTraj(that.drawerData.marker_points[markerLen-1], 10);
@@ -1293,7 +1343,7 @@ export default {
             for (let i = 0, len = pointsList.length; i < len; i += 1) {
               let pixel = that.map.pointToPixel(pointsList[i]);
               points.push([pixel.x, pixel.y]);
-            }
+            } //get points list of traj
             let line = new zrender.Polyline({
               style: {
                 stroke: getTrajColorByValue(weight),
@@ -1449,7 +1499,7 @@ export default {
       }
     },
     /**
-     *
+     * @description Change the active panel and output in the console
      * @param tab
      * @param event
      */
@@ -1469,6 +1519,9 @@ export default {
       this.$refs.detailWindow.style.top = (top) +  'px';
       this.$refs.detailWindow.style.left = (left) + 'px';
     },
+    /**
+     * @description hidden detailwindow and clear the curVehicle data
+     */
     hiddenDetailWindow() {
       this.$refs.detailWindow.style.display = 'none';
       this.curVehicle.curVehiclePoint = undefined;
@@ -1480,12 +1533,18 @@ export default {
             speed: 0.0
       };
     },
+    /**
+     * @description Normalized error notification for response
+     */
     dealResponse(response) {
       this.$message({
         message: "Get " + response.status + " from server",
         type: 'error'
       });
     },
+    /**
+     * @description Normalized error notification
+     */
     dealError(error) {
       if(error.response) {
         this.$message({
@@ -1505,9 +1564,12 @@ export default {
       }
       console.log(error);
     },
+    /**
+     * @description clear all drawer data and update the display
+     */
     clearAllDraw() {
       let _this = this;
-      _this.drawerData = {
+      _this.drawerData = { //line, rect, marker
         line_polygons: [],
         line_label: [],
         rect_polygons: [],
@@ -1517,8 +1579,7 @@ export default {
         marker_points: [],
         overlayIdx: [],
       }
-
-      _this.nearestTrajData = {
+      _this.nearestTrajData = { //nearest data
         idList: [],
         trajectories: [],
         weights: [],
@@ -1533,15 +1594,18 @@ export default {
         points: [],
         speeds: [],
       };
-      _this.updateCanvasLine_roadSpeed();
+      _this.updateCanvasLine_roadSpeed(); //redraw
       _this.updateCanvasBusVehicle();
       let overlays = _this.map.getOverlays();
-      for (let i = 0; i < overlays.length; i++) {
+      for (let i = 0; i < overlays.length; i++) { //clear the overlays
         let tempOL = overlays[i];
         if(tempOL.toString() === "[object Polygon]" ||  tempOL.toString() === "[object Label]" || tempOL.toString() === "[object Polyline]" || tempOL.toString() === "[object Marker]" )
           _this.map.removeOverlay(tempOL);
       }
     },
+    /**
+     * @description update visualdata by realTimeDate
+     */
     async updataVisualData() {
       let _this = this;
       _this.realTimeDate = _this.realTimeDatePick.toLocaleDateString().replaceAll('/', '-')
@@ -1555,22 +1619,26 @@ export default {
       let _this = this;
       _this.$refs.tripChart.updateTripChart(_this.selectedTripList, _this.realTimeDate);
     },
+    /**
+     * @description Displays stop information on the map based on the selected row
+     * @param row
+     */
     clickStopRow(row) {
       let _this = this;
       let point = new BMap.Point(row.lng, row.lat)
-      _this.map.centerAndZoom(point, 18);
+      _this.map.centerAndZoom(point, 18); //set the map center
       let layer = _this.mapLayers.canvasLayerStopText;
       if (!layer.zr) {
         layer.zr = zrender.init(layer.canvas);
         layer.zr.resize();
       }
-      if (_this.displayStopData.stopIdList.indexOf(row.stopId) === -1) {
+      if (_this.displayStopData.stopIdList.indexOf(row.stopId) === -1) { //update display data
         _this.displayStopData.stopIdList.push(row.stopId);
         _this.displayStopData.stopNameList.push(row.stopName);
         _this.displayStopData.stopTimeList.push(row.arrivalTime);
         _this.displayStopData.stopPointList.push(point);
         let pixel = _this.map.pointToPixel(point);
-        let text = new zrender.Text({
+        let text = new zrender.Text({ // draw the text label
           style: {
             textFill: "rgb(0,0,0)",
             text: row.stopName + " " + row.stopTime,
@@ -1579,7 +1647,7 @@ export default {
           position:[pixel.x+10, pixel.y+10]
         })
         layer.zr.add(text);
-        setTimeout(() => {
+        setTimeout(() => { //setTimeout to clear the data
           let tempIdx = _this.displayStopData.stopIdList.indexOf(row.stopId);
           _this.displayStopData.stopIdList.splice(tempIdx, 1);
           _this.displayStopData.stopNameList.splice(tempIdx, 1);

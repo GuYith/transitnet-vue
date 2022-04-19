@@ -77,10 +77,11 @@ export default {
         _this.allCountList = [];
         _this.lateCountList = [];
         _this.rateList = [];
-        // get data List
+        // get maxCount
         for(let ai = 0; ai < _this.arrivalTime.length; ai ++) {
           _this.maxCount = Math.max(_this.arrivalTime[ai].allCount, _this.maxCount);
         }
+        //set indicator
         let indicator = [
           { name: "", max: this.maxCount }, { name: "", max: this.maxCount }, { name: "", max: this.maxCount }, { name: "23:00", max: this.maxCount },
           { name: "", max: this.maxCount }, { name: "", max: this.maxCount }, { name: "", max: this.maxCount }, { name: "22:00", max: this.maxCount },
@@ -183,6 +184,12 @@ export default {
       results = results.concat(this.buildSeries(sDs, 2));
       return results ;
     },
+    /**
+     * @description chart data build by series
+     * @param sDs , si seriesIdx
+     * si: 0 allCount 1 lateCount 2 lateRatio
+     * @returns {Promise<void>}
+     */
     buildSeries(sDs, si) {
       let _this = this;
       let sD = sDs[si];
@@ -218,6 +225,11 @@ export default {
         }
       })
     },
+    /**
+     * @description update chart by curTime
+     * @param curTime
+     * @returns {Promise<void>}
+     */
     async updateArrivalTimeChartData(curTime) {
       let _this = this;
       await _this.$message({
@@ -225,6 +237,10 @@ export default {
         type: "success"
       })
       _this.BusTime_Chart.showLoading();
+      /**
+       * @get, url = '/visual/arrivalTime?date={curTime}'
+       * @dataType List<ArrivalTimeEntity>
+       */
       await this.$axios.get('/visual/arrivalTime?date=' + curTime).then(response => {
         if(response && response.status == 200) {
           _this.arrivalTime = response.data;
@@ -238,11 +254,11 @@ export default {
           _this.allCountList = [];
           _this.lateCountList = [];
           _this.rateList = [];
-          //get data List
+          //maxCount
           for (let ai = 0; ai < _this.arrivalTime.length; ai++) {
             _this.maxCount = Math.max(_this.arrivalTime[ai].allCount, _this.maxCount);
           }
-
+          //get data List
           for (let ai = 0; ai < _this.arrivalTime.length; ai++) {
             _this.allCountList.push(parseInt(_this.arrivalTime[ai].allCount));
             _this.lateCountList.push(parseInt(_this.arrivalTime[ai].lateCount));

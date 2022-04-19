@@ -85,6 +85,7 @@ export default {
   methods: {
     async init() {
       let _this = this;
+      //init chart
       var chartDomRoute = document.getElementById('BusRoute_Chart');
       _this.BusRoute_Chart = echarts.init(chartDomRoute);
       _this.BusRoute_Chart.showLoading();
@@ -139,6 +140,10 @@ export default {
     async routesDataPrepare(routeList, date) {
       let _this = this;
       if(routeList.length > 0) {
+        /**
+         * @get, url = "/realTime/routeSpeed"
+         * @dataType List<SpeedDateVo>
+         */
         await _this.$axios.post("/realTime/routeSpeed", {idList: routeList, dateStr: date}).then(response=>{
           if(response && response.status == 200) {
             let routeDataList = response.data;
@@ -156,6 +161,7 @@ export default {
                 routeInfo.emphasis = {focus: 'series'};
                 routeInfo.data = [];
                 routeInfo.color = colorList[ri];
+                //Take two decimal places
                 routeInfo.data = route.speedList.map((speed)=>{
                   return speed.toFixed(2);
                 });
@@ -181,6 +187,7 @@ export default {
       })
       _this.BusRoute_Chart.showLoading();
       await _this.routesDataPrepare(routeList, date);
+      //update the data
       let option = _this.BusRoute_Chart.getOption();
       option.series = _this.routesInfo;
       option.legend[0].data = _this.routesId;

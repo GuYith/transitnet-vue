@@ -124,6 +124,12 @@ export default {
       _this.BusTrip_Chart.hideLoading();
       optionTrip && _this.BusTrip_Chart.setOption(optionTrip);
     },
+    /**
+     * @description update TripChart by tripList and date
+     * @param tripList
+     * @param date
+     * @returns {Promise<void>}
+     */
     async updateTripChart(tripList, date) {
       let _this = this;
       _this.$message({
@@ -141,6 +147,10 @@ export default {
     async tripDataPrepare(tripList, date) {
       let _this = this;
       if(tripList.length > 0) {
+        /**
+         * @get, url = "/realTime/tripSpeed"
+         * @dataType List<SpeedDateVo>
+         */
         await _this.$axios.post("/realTime/tripSpeed", {idList: tripList, dateStr: date}).then(response=>{
           if(response && response.status == 200) {
             let tripDataList = response.data;
