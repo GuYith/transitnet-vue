@@ -1,3 +1,7 @@
+/**
+ * Baidu Map API: CanvasLayer
+ */
+
 function CanvasLayer(options) {
     this.options = options || {};
     this.paneName = this.options.paneName || 'labelPane';
