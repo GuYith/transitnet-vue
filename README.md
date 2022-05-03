@@ -2,17 +2,17 @@
 A front-end of transit network visualization platform provides multi-view  interactive visualizations for in-depth exploration and mining of public transportation data.
 ## Getting started
 > Make sure Node is downloaded.
-### git clone
+### Git clone
 Clone the front-end project to local
 ```
 git clone https://github.com/GuYith/transitnet-vue.git
 ```
-### install dependencies
+### Install dependencies
 Enter the root directory of the front-end project, and enter the following command.
 ```
 npm install
 ```
-### run back-end
+### Run back-end
 1. Modify the back-end url and port based on your requirements.
 2. Run the backend project in IntelliJ IDEA and ensure the project runs successfully.
 ### start
